@@ -20,11 +20,6 @@
     "bench": "node bench/measure.ts",
     "check:manifest": "node scripts/check-manifest.mjs"
   },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild"
-    ]
-  },
   "devDependencies": {
     "@types/node": "^26.6.2",
     "eslint": "^10.11.0",
