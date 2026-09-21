@@ -74,6 +74,9 @@ describe('messages', () => {
     expect(isPortMessage({ ...jobStart, tgt: 'en' })).toBe(false);
     expect(isPortMessage({ ...batch, priority: 3 })).toBe(false);
     expect(isPortMessage({ ...batch, segments: [{ id: 's1', text: 'x' }] })).toBe(false);
+    // .every() is vacuously true on []: an accepted empty batch is answered with nothing at all,
+    // and the client waits for a seg.done that can never come.
+    expect(isPortMessage({ ...batch, segments: [] })).toBe(false);
     expect(isPortMessage({ type: 'seg.done', jobId: 'j1', segId: 's1', text: 'x' })).toBe(false);
   });
 

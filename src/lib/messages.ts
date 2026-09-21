@@ -178,6 +178,9 @@ export function isPortMessage(value: unknown): value is PortMessage {
         isStr(value.jobId) &&
         isStr(value.batchId) &&
         Array.isArray(value.segments) &&
+        // .every() is vacuously true on []: without this the SW would accept a batch it can
+        // answer with nothing, leaving the client waiting for replies that never come.
+        value.segments.length > 0 &&
         value.segments.every(isSegment) &&
         (value.priority === 0 || value.priority === 1 || value.priority === 2)
       );
