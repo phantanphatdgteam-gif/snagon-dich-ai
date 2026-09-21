@@ -2303,7 +2303,7 @@ Replace the stub with:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pnpm test -- tests/unit/ollama-translate.test.ts tests/unit/ollama.test.ts`
-Expected: PASS (13 + 12 tests). If the fake-timer tests hang, make sure the `pending` promise is created *before* `advanceTimersByTimeAsync` and that `afterEach` restores real timers.
+Expected: PASS (25 tests: 12 in ollama-translate, 13 in ollama). If the fake-timer tests hang, make sure the `pending` promise is created *before* `advanceTimersByTimeAsync` and that `afterEach` restores real timers.
 
 - [ ] **Step 5: Gate and commit**
 
@@ -3128,6 +3128,8 @@ function attachJobPort(port: Port): void {
 
 Run: `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manifest`
 Expected: all green; `manifest OK · extension id = …`. If `tsc` cannot type `browser.runtime.onMessage.addListener`'s callback, annotate the listener parameters as `(message: unknown, _sender: unknown, sendResponse: (reply: PopupReply) => void)`.
+
+The `sendResponse` + `return true` pattern above is the Chrome-native contract, which is what WXT 0.21 exposes as `browser` (it no longer bundles webextension-polyfill). Check the built output once: `grep -c webextension-polyfill .output/chrome-mv3/background.js` must print `0`. If it does not, the polyfill ignores `return true` — switch the listener to returning the promise directly (`return handlePopupRequest(message).catch((error) => failureReply(message, error))`) and drop `sendResponse`.
 
 - [ ] **Step 3: Commit**
 
@@ -4178,7 +4180,9 @@ main().catch((error: unknown) => {
 - [ ] **Step 6: Verify the script loads and self-skips**
 
 Run: `pnpm bench` (no `SNAGON_LIVE`) and `pnpm bench -- --probe`
-Expected: both print `bench skipped: set SNAGON_LIVE=1 …` and exit 0 — this proves Node 24 can load every `src/lib` module the bench imports (no non-erasable syntax). Do NOT run with `SNAGON_LIVE=1` in this task.
+Expected: both print `bench skipped: set SNAGON_LIVE=1 …` and exit 0.
+
+If `pnpm typecheck` reports `Cannot find name 'process'` or `Cannot find module 'node:fs'`, add `"types": ["node"]` to `compilerOptions` in `tsconfig.json`; if that then hides the extension globals, use `"types": ["node", "chrome"]`. Expected also — this proves Node 24 can load every `src/lib` module the bench imports (no non-erasable syntax). Do NOT run with `SNAGON_LIVE=1` in this task.
 
 - [ ] **Step 7: Gate and commit**
 
@@ -4318,7 +4322,7 @@ Expected: `bench/results/m0-probe-<date>.csv` with three rows (`P1_format_stream
 Edit `docs/spec/snagon-dich-ai-spec.md`:
 - §8.2: after the candidates table, add a heading `#### Số đo M0 (<date>, Ollama 0.34.2, num_ctx 8192)` followed by the markdown summary table from the bench output and one line naming skipped models.
 - §7.3: append three bullets with the probe results, e.g. `- M0 (<date>): \`format\` + \`stream: true\` → ok/fail (chi tiết …); abort → ok/fail (TTFT baseline … ms, sau abort … ms); \`think: false\` trên translategemma → 200.` If P1 failed, also state that profile B uses `stream: false` from M1 and add the LEDGER line.
-- §7.1 (`/api/show` row): replace `template → tự chọn profile (có template dạng TranslateGemma → A, còn lại → B)` with `chọn profile theo tên model (translategemma* → A, còn lại → B; template của /api/show không phân biệt được — kiểm M0)`.
+- §7.1, the `POST /api/show` row of the endpoint table: find the clause that says the profile is chosen from `template` (it reads roughly ``template`` → tự chọn profile (có `template` dạng TranslateGemma → A, còn lại → B)`) and replace that clause — keeping the rest of the cell — with `chọn profile theo tên model (translategemma* → A, còn lại → B; `template` của /api/show không phân biệt được — kiểm M0)`.
 - §6.2 options line: change `num_predict = min(4.096; …)` to `min(2.048; …)` with the note `(trần chung §7.3)`.
 
 Edit `LEDGER.md`: tick the item `Patch spec §7.1 … §6.2 …` with `— PR M0`; on the EMA item, append the measured chars/token per language from the CSV (`chars_in / prompt_eval_count`, noting it includes template tokens); resolve the P1 item (`— P1 ok, giữ stream:true` or `— P1 fail, stream:false từ M1`).
