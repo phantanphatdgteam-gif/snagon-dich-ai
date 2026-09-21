@@ -14,7 +14,7 @@ import {
   type StatusGet,
   type StatusMsg,
 } from '../../lib/messages.ts';
-import { pickProfile, type Profile } from '../../lib/prompt/profile.ts';
+import { pickProfile } from '../../lib/prompt/profile.ts';
 import { SAMPLES } from '../../lib/samples.ts';
 import { tokensEst } from '../../lib/tokens.ts';
 import { vi } from '../../locales/vi.ts';
@@ -55,7 +55,6 @@ const ui = {
   corsRestart: el<HTMLParagraphElement>('cors-restart'),
 };
 
-let currentProfile: Profile = 'instruct-json';
 let activePort: Port | undefined;
 let activeJobId: string | undefined;
 
@@ -160,12 +159,10 @@ async function describeModel(model: string): Promise<void> {
 
 function renderModel(reply: ModelDescribed): void {
   if ('error' in reply) {
-    currentProfile = pickProfile(reply.model);
-    ui.modelInfo.textContent = `${vi.profileLabel(currentProfile)} · ${reply.error.code}`;
+    ui.modelInfo.textContent = `${vi.profileLabel(pickProfile(reply.model))} · ${reply.error.code}`;
     showError(reply.error.code, reply.error.message);
     return;
   }
-  currentProfile = reply.profile;
   const context =
     reply.contextLength === null
       ? vi.popup.unknownContext
@@ -213,6 +210,7 @@ function startTest(): void {
   activePort = port;
   activeJobId = jobId;
 
+  let settled = false; // a seg.done or seg.error arrived for this job
   port.onMessage.addListener((raw: unknown) => {
     if (!isPortReply(raw) || raw.jobId !== jobId) return;
     if (raw.type === 'seg.partial') {
@@ -220,6 +218,7 @@ function startTest(): void {
       ui.stats.textContent = `${raw.tokens} ${vi.popup.tokens}`;
       return;
     }
+    settled = true;
     if (raw.type === 'seg.done') {
       ui.output.textContent = raw.text;
       const stats = raw.stats;
@@ -232,13 +231,23 @@ function startTest(): void {
           )
         : '';
     } else {
+      // Fail-closed: a half-streamed translation never stays on screen next to an error.
+      ui.output.textContent = '';
       showError(raw.code, raw.message);
       ui.stats.textContent = '';
     }
     finishTest();
   });
   port.onDisconnect.addListener(() => {
-    if (activePort === port) finishTest(); // SW side went away
+    if (activePort !== port) return;
+    if (!settled) {
+      // Chrome killed the service worker mid-request: no seg.done/seg.error will ever arrive.
+      ui.output.textContent = '';
+      ui.stats.textContent = '';
+      ui.error.hidden = false;
+      ui.error.textContent = vi.popup.disconnected;
+    }
+    finishTest();
   });
 
   void (async () => {
@@ -251,7 +260,7 @@ function startTest(): void {
       src,
       tgt: 'vi',
       model,
-      profile: currentProfile,
+      profile: pickProfile(model), // derived at send time: model.describe may not have replied yet
       url: TEST_URL,
       title: TEST_TITLE,
     };

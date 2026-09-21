@@ -17,6 +17,7 @@ export const vi = {
     cancel: 'Hủy',
     cancelled: 'Đã hủy.',
     translating: 'Đang dịch…',
+    disconnected: 'Mất kết nối với service worker. Hãy thử lại.',
     tokens: 'token',
     copy: 'Copy',
     copied: 'Đã copy',
@@ -51,6 +52,13 @@ export const vi = {
     'Lệnh trên tự tắt rồi mở lại Ollama. Chỉ có hiệu lực cho lần mở đó — mở Ollama từ Dock thì phải chạy lại.',
   profileLabel: (profile: Profile): string =>
     profile === 'translategemma' ? 'Profile A (translategemma)' : 'Profile B (instruct-json)',
-  statsLine: (ttftMs: number, tokPerSec: number, evalCount: number, doneReason: string): string =>
-    `TTFT ${Math.round(ttftMs)} ms · ${tokPerSec.toFixed(1)} tok/s · ${evalCount} token · ${doneReason}`,
+  // CLAUDE.md §4: `.` for thousands, `,` for decimals — the vi-VN formatting the popup uses for ctx.
+  statsLine: (ttftMs: number, tokPerSec: number, evalCount: number, doneReason: string): string => {
+    const ttft = Math.round(ttftMs).toLocaleString('vi-VN');
+    const rate = tokPerSec.toLocaleString('vi-VN', {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1,
+    });
+    return `TTFT ${ttft} ms · ${rate} tok/s · ${evalCount.toLocaleString('vi-VN')} token · ${doneReason}`;
+  },
 };
