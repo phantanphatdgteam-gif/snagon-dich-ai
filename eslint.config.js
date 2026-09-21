@@ -7,15 +7,35 @@ const NETWORK_GLOBALS = ['fetch', 'XMLHttpRequest', 'WebSocket', 'EventSource'];
 const GLOBAL_ALIASES = ['globalThis', 'window', 'self'];
 const networkMessage = (name) => `${name} is only allowed in src/lib/provider/ (CLAUDE.md §9)`;
 
-const restrictedGlobals = (names) => names.map((name) => ({ name, message: networkMessage(name) }));
+// CLAUDE.md §3: src/lib/** and src/locales/** are plain TS that unit-tests in Node, so they never
+// touch chrome.* / browser.*; only src/entrypoints/** may. In this codebase `browser` comes from
+// WXT's `#imports`, not a global, so the import is banned there as well.
+const EXTENSION_GLOBALS = ['chrome', 'browser'];
+const EXTENSION_IMPORTS = ['#imports', 'wxt/browser'];
+const PURE_FILES = ['src/lib/**/*.ts', 'src/locales/**/*.ts'];
+const extensionMessage = (name) =>
+  `${name} is only allowed in src/entrypoints/: src/lib and src/locales must not touch chrome.*/browser.* (CLAUDE.md §3)`;
+
+const restrictedGlobals = (names, message = networkMessage) =>
+  names.map((name) => ({ name, message: message(name) }));
+
+const aliasProperties = (names, message = networkMessage) =>
+  GLOBAL_ALIASES.flatMap((object) =>
+    names.map((property) => ({ object, property, message: message(property) })),
+  );
 
 // sendBeacon is matched on any object, so globalThis.navigator.sendBeacon is covered as well.
 const restrictedProperties = (names) => [
-  ...GLOBAL_ALIASES.flatMap((object) =>
-    names.map((property) => ({ object, property, message: networkMessage(property) })),
-  ),
+  ...aliasProperties(names),
   { property: 'sendBeacon', message: networkMessage('navigator.sendBeacon') },
 ];
+
+const extensionGlobals = restrictedGlobals(EXTENSION_GLOBALS, extensionMessage);
+const extensionProperties = aliasProperties(EXTENSION_GLOBALS, extensionMessage);
+const extensionImports = EXTENSION_IMPORTS.map((name) => ({
+  name,
+  message: extensionMessage(name),
+}));
 
 // CLAUDE.md §6: tests must not reach an outside network either. They may still name `fetch`,
 // because the provider takes an injected stub — createOllamaProvider({ fetch }).
@@ -62,8 +82,28 @@ export default defineConfig([
     },
   },
   {
+    files: PURE_FILES,
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        ...restrictedGlobals(NETWORK_GLOBALS),
+        ...extensionGlobals,
+      ],
+      'no-restricted-properties': [
+        'error',
+        ...restrictedProperties(NETWORK_GLOBALS),
+        ...extensionProperties,
+      ],
+      'no-restricted-imports': ['error', { paths: extensionImports }],
+    },
+  },
+  {
+    // The provider is the one place allowed to use the network; it still stays extension-free.
     files: ['src/lib/provider/**/*.ts'],
-    rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
+    rules: {
+      'no-restricted-globals': ['error', ...extensionGlobals],
+      'no-restricted-properties': ['error', ...extensionProperties],
+    },
   },
   {
     files: ['src/lib/log.ts', 'bench/**/*.ts', 'scripts/**/*.mjs', 'tests/**/*.ts'],
