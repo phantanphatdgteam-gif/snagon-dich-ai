@@ -170,7 +170,15 @@ async function measure(
       console.log(`skipped ${model}: ${describeError(error)}`);
       continue;
     }
-    const loadedBefore = (await provider.loaded()).some((loaded) => loaded.name === model);
+    // Residency we cannot confirm is read pessimistically: one boolean column is not worth losing
+    // a run that occupies the GPU for half an hour.
+    let loadedBefore = false;
+    let loadedDetail = '';
+    try {
+      loadedBefore = (await provider.loaded()).some((loaded) => loaded.name === model);
+    } catch (error) {
+      loadedDetail = describeError(error);
+    }
     // A warm-up can fail on its own deadline — a cold 19 GB load may outlast the TTFT budget.
     // Record it under its E_* code and measure the model anyway: the first run is then cold,
     // which is data. Aborting here would throw away every model after this one.
@@ -192,6 +200,9 @@ async function measure(
     console.log(
       `\n${model} (${profile}) warm-up ${Math.round(warmupMs)} ms · loaded before: ${loadedBefore}`,
     );
+    if (loadedDetail !== '') {
+      console.log(`  /api/ps failed: ${loadedDetail} — loaded_before recorded as false`);
+    }
     if (warmupCode !== '') {
       console.log(`  warm-up failed: ${warmupDetail} — measuring anyway, the first run is cold`);
     }
