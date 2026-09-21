@@ -24,8 +24,8 @@
 - Relative imports inside the repo carry the `.ts` extension. Types are imported with `import type`. No enums, namespaces, parameter properties, or `const enum` (`erasableSyntaxOnly`).
 - pnpm only. First install creates the lockfile; afterwards `pnpm install --frozen-lockfile`. Never edit `pnpm-lock.yaml` by hand.
 - Never run `ollama pull`, `launchctl`, or touch `~/.ollama`; print the command for Phát instead. Never run the live bench (`SNAGON_LIVE=1`) without Phát's explicit go-ahead in the conversation.
-- Commits: Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`), small, one per task or per TDD step group. Every commit message ends with the `Co-Authored-By:` trailer your own harness reminder specifies (it names your model — do not copy another agent's). The commit commands in the steps below show the trailer's position; substitute your own line.
-- Gate for every task: `pnpm typecheck && pnpm lint && pnpm test` green (single file: `pnpm test -- tests/unit/<name>.test.ts`). Tasks that touch entrypoints also need `pnpm build`.
+- Commits: Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`), small, one per task or per TDD step group. Do NOT add any attribution or `Co-Authored-By:` trailer to commit messages or PR descriptions (harness instruction, 2026-09-21; it overrides CLAUDE.md on this point). Where a step below shows a trailer placeholder, omit that line entirely.
+- Gate for every task: `pnpm typecheck && pnpm lint && pnpm test` green (single file: `pnpm exec vitest run tests/unit/<name>.test.ts`). Tasks that touch entrypoints also need `pnpm build`.
 
 ## File Structure
 
@@ -292,9 +292,7 @@ If `#imports` cannot be resolved by `tsc`, confirm `.wxt/tsconfig.json` exists (
 
 ```bash
 git add package.json pnpm-lock.yaml .nvmrc .prettierrc .prettierignore wxt.config.ts tsconfig.json vitest.config.ts eslint.config.js src/entrypoints
-git commit -m "chore: scaffold WXT project with TypeScript, Vitest and ESLint gates
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "chore: scaffold WXT project with TypeScript, Vitest and ESLint gates"
 ```
 
 ---
@@ -445,9 +443,7 @@ Expected: all exit 0.
 
 ```bash
 git add wxt.config.ts scripts/extension-id.mjs scripts/check-manifest.mjs
-git commit -m "feat: pin extension id with manifest key and freeze spec §4 manifest
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: pin extension id with manifest key and freeze spec §4 manifest"
 ```
 
 ---
@@ -535,7 +531,7 @@ describe('numPredict', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/lang.test.ts tests/unit/tokens.test.ts`
+Run: `pnpm exec vitest run tests/unit/lang.test.ts tests/unit/tokens.test.ts`
 Expected: FAIL — `Failed to resolve import "../../src/lib/lang/codes.ts"` (module not found).
 
 - [ ] **Step 3: Write the implementation**
@@ -592,7 +588,7 @@ export function numPredict(tokensIn: number, extra: number): number {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/lang.test.ts tests/unit/tokens.test.ts`
+Run: `pnpm exec vitest run tests/unit/lang.test.ts tests/unit/tokens.test.ts`
 Expected: PASS (9 tests).
 
 - [ ] **Step 5: Gate and commit**
@@ -601,9 +597,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add src/lib/lang/codes.ts src/lib/tokens.ts tests/unit/lang.test.ts tests/unit/tokens.test.ts
-git commit -m "feat: add source language codes and token estimates
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: add source language codes and token estimates"
 ```
 
 ---
@@ -709,7 +703,7 @@ describe('mapFetchError', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/errors.test.ts`
+Run: `pnpm exec vitest run tests/unit/errors.test.ts`
 Expected: FAIL — module `../../src/lib/errors.ts` not found.
 
 - [ ] **Step 3: Write the implementation**
@@ -786,7 +780,7 @@ export function mapFetchError(error: unknown): Error {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/errors.test.ts`
+Run: `pnpm exec vitest run tests/unit/errors.test.ts`
 Expected: PASS (13 tests).
 
 - [ ] **Step 5: Gate and commit**
@@ -795,9 +789,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add src/lib/errors.ts tests/unit/errors.test.ts
-git commit -m "feat: add E_* error codes and HTTP/fetch error mapping
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: add E_* error codes and HTTP/fetch error mapping"
 ```
 
 ---
@@ -882,7 +874,7 @@ describe('parseNdjson', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/ndjson.test.ts`
+Run: `pnpm exec vitest run tests/unit/ndjson.test.ts`
 Expected: FAIL — module `../../src/lib/provider/ndjson.ts` not found.
 
 - [ ] **Step 3: Write the implementation**
@@ -936,7 +928,7 @@ function parseLine(line: string): unknown {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/ndjson.test.ts`
+Run: `pnpm exec vitest run tests/unit/ndjson.test.ts`
 Expected: PASS (6 tests).
 
 - [ ] **Step 5: Gate and commit**
@@ -945,9 +937,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add src/lib/provider/ndjson.ts tests/unit/ndjson.test.ts
-git commit -m "feat: add NDJSON stream parser
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: add NDJSON stream parser"
 ```
 
 ---
@@ -1178,7 +1168,7 @@ describe('parseTranslations', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/prompt.test.ts`
+Run: `pnpm exec vitest run tests/unit/prompt.test.ts`
 Expected: FAIL — module `../../src/lib/prompt/index.ts` not found.
 
 - [ ] **Step 3: Write `src/lib/prompt/profile.ts`**
@@ -1437,7 +1427,7 @@ export function buildChatRequest(batch: PromptBatch): ChatRequest {
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/prompt.test.ts`
+Run: `pnpm exec vitest run tests/unit/prompt.test.ts`
 Expected: PASS (23 tests). If the byte-exact test fails, diff the two strings character by character — the usual culprit is a missing blank line or a trailing space.
 
 - [ ] **Step 8: Gate and commit**
@@ -1446,9 +1436,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add src/lib/prompt tests/unit/prompt.test.ts
-git commit -m "feat: add prompt profiles A/B and /api/chat request builder
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: add prompt profiles A/B and /api/chat request builder"
 ```
 
 ---
@@ -1618,7 +1606,7 @@ describe('createOllamaProvider — error mapping', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/ollama.test.ts`
+Run: `pnpm exec vitest run tests/unit/ollama.test.ts`
 Expected: FAIL — module `../../src/lib/provider/ollama.ts` not found.
 
 - [ ] **Step 3: Write `src/lib/provider/types.ts`**
@@ -1839,7 +1827,7 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
 
 - [ ] **Step 5: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/ollama.test.ts`
+Run: `pnpm exec vitest run tests/unit/ollama.test.ts`
 Expected: PASS (13 tests).
 
 - [ ] **Step 6: Gate and commit**
@@ -1848,9 +1836,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add src/lib/provider/types.ts src/lib/provider/ollama.ts tests/unit/ollama.test.ts
-git commit -m "feat: add TranslateProvider interface and Ollama status endpoints
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: add TranslateProvider interface and Ollama status endpoints"
 ```
 
 ---
@@ -2163,7 +2149,7 @@ describe('translate — failures', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/ollama-translate.test.ts`
+Run: `pnpm exec vitest run tests/unit/ollama-translate.test.ts`
 Expected: FAIL — every test rejects with `E_OUTPUT: translate is implemented in Task 8` (the stub).
 
 - [ ] **Step 3: Replace the `translateStream` stub in `src/lib/provider/ollama.ts`**
@@ -2302,7 +2288,7 @@ Replace the stub with:
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/ollama-translate.test.ts tests/unit/ollama.test.ts`
+Run: `pnpm exec vitest run tests/unit/ollama-translate.test.ts tests/unit/ollama.test.ts`
 Expected: PASS (25 tests: 12 in ollama-translate, 13 in ollama). If the fake-timer tests hang, make sure the `pending` promise is created *before* `advanceTimersByTimeAsync` and that `afterEach` restores real timers.
 
 - [ ] **Step 5: Gate and commit**
@@ -2311,9 +2297,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add src/lib/provider/ollama.ts tests/unit/ollama-translate.test.ts
-git commit -m "feat: stream /api/chat translations with timeouts and abort
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: stream /api/chat translations with timeouts and abort"
 ```
 
 ---
@@ -2464,7 +2448,7 @@ describe('samples', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/messages.test.ts tests/unit/samples.test.ts`
+Run: `pnpm exec vitest run tests/unit/messages.test.ts tests/unit/samples.test.ts`
 Expected: FAIL — modules not found.
 
 - [ ] **Step 3: Write `src/lib/messages.ts`**
@@ -2843,7 +2827,7 @@ export const vi = {
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/messages.test.ts tests/unit/samples.test.ts`
+Run: `pnpm exec vitest run tests/unit/messages.test.ts tests/unit/samples.test.ts`
 Expected: PASS (5 + 5 tests).
 
 - [ ] **Step 8: Gate and commit**
@@ -2852,9 +2836,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add src/lib/messages.ts src/lib/log.ts src/lib/samples.ts src/locales/vi.ts tests/unit/messages.test.ts tests/unit/samples.test.ts
-git commit -m "feat: add job/popup message types, logger, sample texts and vi strings
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: add job/popup message types, logger, sample texts and vi strings"
 ```
 
 ---
@@ -3135,9 +3117,7 @@ The `sendResponse` + `return true` pattern above is the Chrome-native contract, 
 
 ```bash
 git add src/entrypoints/background.ts
-git commit -m "feat: service worker handles popup status/describe and the snagon-job port
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: service worker handles popup status/describe and the snagon-job port"
 ```
 
 ---
@@ -3594,9 +3574,7 @@ Optional smoke test when a display is available (a subagent without one skips it
 
 ```bash
 git add src/entrypoints/popup
-git commit -m "feat: popup checks the connection, lists models and runs a translate test
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: popup checks the connection, lists models and runs a translate test"
 ```
 
 ---
@@ -3749,7 +3727,7 @@ describe('summary', () => {
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `pnpm test -- tests/unit/bench-lib.test.ts`
+Run: `pnpm exec vitest run tests/unit/bench-lib.test.ts`
 Expected: FAIL — module `../../bench/lib.ts` not found.
 
 - [ ] **Step 3: Write `bench/lib.ts`**
@@ -3921,7 +3899,7 @@ export function markdownTable(rows: readonly SummaryRow[]): string {
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `pnpm test -- tests/unit/bench-lib.test.ts`
+Run: `pnpm exec vitest run tests/unit/bench-lib.test.ts`
 Expected: PASS (11 tests).
 
 - [ ] **Step 5: Write `bench/measure.ts` and `bench/results/.gitkeep`**
@@ -4190,9 +4168,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add bench/lib.ts bench/measure.ts bench/results/.gitkeep tests/unit/bench-lib.test.ts
-git commit -m "feat: add bench script measuring TTFT/tok-s and probing format-stream, abort, think:false
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "feat: add bench script measuring TTFT/tok-s and probing format-stream, abort, think:false"
 ```
 
 ---
@@ -4281,9 +4257,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manif
 
 ```bash
 git add .github/workflows/ci.yml README.md
-git commit -m "chore: add CI workflow and README
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "chore: add CI workflow and README"
 ```
 
 ---
@@ -4331,9 +4305,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 
 ```bash
 git add bench/results/m0-*.csv docs/spec/snagon-dich-ai-spec.md LEDGER.md
-git commit -m "docs: record M0 measurements and probe results in the spec
-
-<Co-Authored-By trailer from your harness reminder>"
+git commit -m "docs: record M0 measurements and probe results in the spec"
 ```
 
 - [ ] **Step 6: Open the PR and stop**

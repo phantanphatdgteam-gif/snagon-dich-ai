@@ -74,7 +74,7 @@
 - Dev (mở Chrome với extension, hot reload): `pnpm dev`
 - Build: `pnpm build` → `.output/chrome-mv3/`; đóng gói: `pnpm zip`
 - Typecheck + lint: `pnpm typecheck && pnpm lint`
-- Test một file (ưu tiên hơn cả suite): `pnpm test -- tests/unit/placeholder.test.ts`
+- Test một file (ưu tiên hơn cả suite): `pnpm exec vitest run tests/unit/placeholder.test.ts` — KHÔNG dùng `pnpm test -- <file>`: pnpm chuyển thành `vitest run -- <file>` và Vitest bỏ qua filter, chạy cả suite (kiểm 2026-09-21).
 - Test unit + integration: `pnpm test`
 - E2E (tự build rồi chạy với mock Ollama): `pnpm test:e2e`
 - Chạy mock Ollama riêng: `pnpm mock-ollama`
