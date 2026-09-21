@@ -1,0 +1,26 @@
+# dependencies / build
+node_modules/
+.output/
+.wxt/
+stats.html
+stats-*.json
+
+# superpowers worktrees
+.worktrees/
+
+# extension private key — never commit
+*.pem
+
+# bench raw outputs (CSV summaries ARE committed)
+bench/results/*.jsonl
+
+# test artifacts
+test-results/
+playwright-report/
+coverage/
+
+# OS / editor
+.DS_Store
+
+# rune plugin metrics (local only)
+.rune/
