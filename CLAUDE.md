@@ -13,8 +13,10 @@
 - Spec đầy đủ: `docs/spec/snagon-dich-ai-spec.md` — nguồn sự thật. Spec và code mâu thuẫn → spec thắng, báo lại; spec sai → nói thẳng 1 câu rồi làm đúng phạm vi.
 - Kiến trúc & lý do: content script chỉ đọc/ghi DOM và giữ state job; service worker (SW) là client Ollama DUY NHẤT vì content script mang origin của trang → Ollama trả 403 CORS và CSP trang chặn (§4). SW stateless vì Chrome kill nó bất kỳ lúc nào (30 s idle / 5 phút một request / fetch > 30 s chưa có response) → job resume từ content script theo `(jobId, segId)` (§7.4).
 - Hai profile prompt (§6): A `translategemma` — đúng 1 user message theo template cố định, 1 segment/request; B `instruct-json` — system prompt + JSON schema qua `format`, batch ≤ 8 segment, luôn `think: false`. Không glossary, dịch hết; tên riêng/thương hiệu/ticker/số/URL/code giữ nguyên.
+- **Model mặc định đã đổi theo số đo M0** (§8.2, bench 45 request): `gemma4:26b` + profile B là mặc định cho **mọi cặp ngôn ngữ** — 83,6 tok/s (vượt ước lượng 45–70) và tag_ok 100%. `translategemma:12b` **KHÔNG dùng cho zh/th**: nó xoá sạch placeholder `<1>…</1>` trên zh-Hans/zh-Hant/th (0/9 lần), EN+RU thì đạt 6/6; cùng mẫu tiếng Trung nó dịch `48亿元` thành "48 tỷ đồng" — sai 10 lần độ lớn và sai đơn vị. `translategemma:27b` giữ tag 100% nhưng 14,8 tok/s → chỉ dùng cho đoạn ngắn chọn tay.
 - Ràng buộc cứng: `num_ctx` 8192 cố định mọi request (đổi → Ollama reload model; mặc định trên máy này là 256K, quá lớn); tối đa 2 request in-flight; viewport-first rồi lazy khi cuộn; validator fail-closed — segment lỗi giữ gốc + đánh dấu (§5.4, §5.6, §8.3).
 - Lộ trình (§13): M0 spike kết nối → M1 dịch trang lõi (replace mode) → M2 độ bền → M3 bake-off + site rules → M4 hoàn thiện. Mỗi milestone = một design + một plan superpowers + một PR có giới hạn.
+- **Trạng thái: M0 XONG** (PR #1 merged 2026-09-21, 34 commit). Đang vào M1. Những gì M0 để lại và M1 dùng lại nguyên: `src/lib/provider/` (Ollama client, stream + abort + 3 timeout), `src/lib/prompt/` (profile A/B), `src/lib/{errors,messages,tokens,samples,log}`, `src/locales/vi.ts`, service worker, popup. Popup đang là client của giao thức job — **content script M1 dùng lại y nguyên giao thức đó**, không thiết kế lại.
 - Ngoài phạm vi v1: glossary, song ngữ (M4), PDF/OCR, dịch ngược chiều khi soạn thảo, Firefox, adapter provider khác Ollama (M4).
 
  
@@ -23,7 +25,7 @@
 
  
 
-- OS/Shell: macOS 26 / zsh. Ollama 0.34.2 chạy dạng app menu bar (đã có engine MLX). Biến môi trường Ollama đặt bằng `launchctl setenv` rồi restart app — KHÔNG tự chạy, chỉ in lệnh cho Phát.
+- OS/Shell: macOS 26 / zsh. Ollama 0.34.2 chạy dạng app menu bar (đã có engine MLX). Biến môi trường Ollama đặt bằng `open -a Ollama --env ...` (KHÔNG phải `launchctl setenv` — xem §10) rồi restart app; KHÔNG tự chạy, chỉ in lệnh cho Phát.
 - Runtime: Node 24 (`.nvmrc` = `24`; cài tại `~/.local/node`, máy không có nvm/brew — kiểm 2026-09-21). Node 24 chạy `.ts` trực tiếp nên `pnpm bench` = `node bench/measure.ts`, không thêm `tsx`; import tương đối trong repo ghi đuôi `.ts`. Chrome ≥ 144 (manifest `minimum_chrome_version`; máy đang 153). `git` hệ thống chỉ chạy sau khi chấp nhận Xcode license (`sudo xcodebuild -license accept`) — Phát tự chạy, không sudo hộ.
 - Package manager: pnpm 11 qua corepack (`packageManager: pnpm@11.22.0` trong `package.json`; corepack 0.35 nằm ở `~/.local/node/bin`) — không npm/yarn; không sửa tay `pnpm-lock.yaml`. Với superpowers worktree: setup bằng `pnpm install --frozen-lockfile`, baseline bằng `pnpm test` (không phải `npm install`/`npm test`).
 - Tech stack: TypeScript 5.x `strict` (pin `^5.9`, không lên 7) · WXT (MV3, `srcDir: 'src'`) · không UI framework (vanilla DOM) · `idb` · Vitest + jsdom + fast-check · Playwright (Chromium, load unpacked từ `.output/chrome-mv3`) · ESLint + `typescript-eslint` + `eslint-plugin-no-unsanitized` · Prettier.
@@ -88,6 +90,9 @@
  
 
 - Framework: Vitest (unit, integration) · fast-check (property) · Playwright (e2e).
+- Baseline sau M0: **116 unit test / 11 file**, `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manifest` đều sạch. Test giảm đi so với mốc này là hồi quy, phải giải thích.
+- `vitest.config.ts` hiện `environment: 'node'` và `include: ['tests/unit/**']` — M1 cần jsdom cho segmenter/placeholder và M2 cần `tests/integration`, nên task đầu tiên chạm vào đó phải sửa config (đã ghi LEDGER).
+- **`pnpm test -- <file>` KHÔNG lọc file** — pnpm biến nó thành `vitest run -- <file>` và Vitest bỏ qua filter, chạy cả suite. Dùng `pnpm exec vitest run <file>`.
 - Vị trí: `tests/<tầng>/<module>.test.ts`; fixture ở `fixtures/`.
 - Tiêu chí hoàn thành một task: `pnpm typecheck && pnpm lint && pnpm test` xanh; task đụng content script hoặc render → thêm `pnpm test:e2e` xanh.
 - Quy tắc: TDD theo skill superpowers (test fail trước, implement tối thiểu, pass, commit). Property test bắt buộc cho `placeholder` (round-trip `decode(encode(x)) ≡ x`) và `validator` (không bao giờ pass output có tập tag khác input). Integration test chỉ đi qua mock Ollama; test cần Ollama thật gate bằng `SNAGON_LIVE=1` và tự skip khi thiếu.
@@ -120,7 +125,18 @@
 
  
 
-### 8.2 Think Before Coding
+### 8.2 Boundary pass — bắt buộc trước khi dispatch bất kỳ plan nào
+
+Bài học M0: ba lỗi nặng nhất đều nằm trong plan, không phải do agent làm sai — brief tả kỹ happy path rồi bỏ lửng đường lỗi, nên 13 agent triển khai đúng cái thiếu đó. Trước khi dispatch, rà plan **chỉ hỏi những câu này**, và viết câu trả lời vào brief chứ không giữ trong đầu:
+
+- Mọi call ra ngoài (HTTP, storage, message, `browser.*`) có deadline chưa? M0 có `translate` 3 timeout nhưng `version/listModels/describe/loaded` không có cái nào.
+- Mọi `JSON.parse` / `response.json()` có bọc và map về mã `E_*` chưa? Một `SyntaxError` trần sẽ thoát khỏi taxonomy lỗi.
+- Guard có từ chối rỗng chưa? `[].every()` luôn `true` — `segments: []` lọt guard rồi treo client vĩnh viễn.
+- Mọi promise ở tầng UI có `catch` **hiển thị được gì đó** chưa? Không có thì người dùng thấy treo, không thấy lỗi.
+- **Không đường đo nào được thay thất bại bằng fallback.** M0: bench thay segment bị cắt bằng text dở dang → median TTFT lệch 45 lần; và một timeout 60 s suýt được in vào bảng spec như một phép đo.
+- Tham số nạp model (`num_ctx`, `keep_alive`) có giống nhau ở **mọi** request của cùng model chưa? Lệch một chỗ là Ollama nạp lại.
+
+### 8.3 Think Before Coding
 
  
 
@@ -130,7 +146,7 @@
 
  
 
-### 8.3 Simplicity & Surgical
+### 8.4 Simplicity & Surgical
 
  
 
@@ -140,7 +156,7 @@
 
  
 
-### 8.4 Communication
+### 8.5 Communication
 
  
 
@@ -150,7 +166,7 @@
 
  
 
-### 8.5 Subagents
+### 8.6 Subagents
 
  
 
@@ -171,6 +187,20 @@
  
 
 ## 10. Known Gotchas
+
+### Đo được ở M0 (2026-09-21) — đừng đo lại, đừng đoán lại
+
+- `gemma4:26b` = **83,6 tok/s** median, TTFT warm 68 ms, tag_ok 100%. Ước lượng cũ 45–70 là thấp. `translategemma:12b` 33,2 tok/s · `translategemma:27b` 14,8 tok/s (cả hai khớp ước lượng).
+- **`translategemma:12b` XOÁ placeholder trên zh-Hans/zh-Hant/th** — 0/9 lần giữ được `<1>…</1>`, trong khi EN/RU đạt 6/6. Không phải làm hỏng tag mà xoá hẳn, phần chữ vẫn dịch bình thường. `translategemma:27b` cùng template đạt 100% → giới hạn của bản 12B, không phải lỗi template profile A.
+- **Cold load thật 15,2 s cho model 8 GB** (ước lượng cũ 3–5 s), vượt ngưỡng A6 "< 12 s". Model 19 GB còn lâu hơn. M0 chưa có resume nên SW bị giết giữa cold load là im lặng.
+- **`format` JSON schema CHẠY ĐƯỢC cùng `stream: true`** (probe P1: 119 chunk có nội dung trước `done`, parse đủ id) → profile B giữ `stream: true`, bỏ hẳn phương án dự phòng `stream: false`.
+- **Abort phía client DỪNG sinh token** (probe P2: TTFT baseline 218 ms, sau abort 260 ms — chênh 42 ms nghĩa là server rảnh ngay).
+- **`think: false` được chấp nhận** trên model không có capability `thinking` (probe P3, HTTP 200).
+- **Warm-up phải gửi `options.num_ctx: 8192`.** Thiếu nó, Ollama nạp model ở context mặc định rồi request dịch ép nạp lại — log server ghi `n_ctx = 131072` rồi `n_ctx = 8192` cách nhau 1 giây. Warm-up thiếu `num_ctx` không chỉ vô dụng mà phản tác dụng, và làm nhiễu luôn số đo bench (probe P2 suýt cho kết quả "ok giả" vì baseline bị phồng lên 1.677 ms).
+- **`launchctl setenv OLLAMA_ORIGINS` là no-op trên macOS 26** — app mở qua Launch Services không kế thừa biến của launchd. Dùng `pkill -x Ollama; sleep 2; open -a Ollama --env "OLLAMA_ORIGINS=chrome-extension://<ID>"` (dấu nháy đơn quanh cặp KEY=VALUE khi gõ tay). Chỉ có hiệu lực cho lần mở đó — mở Ollama từ Dock là mất. Extension ID cố định: `afdehlbopanflojemfiplepnfccgafge`. Kiểm bằng curl kèm header `Origin: chrome-extension://<ID>` vào `/api/version`, phải trả 200.
+- **`/api/show` không phân biệt được profile** — `translategemma:12b` trả template chat Gemma-3 chuẩn, `gemma4:26b` trả `{{ .Prompt }}`. Chọn profile theo **tên model** (`/^translategemma(?::|$)/i` → A, còn lại → B).
+- **pnpm 11 chuyển tiếp cả dấu `--`** sang script: `parseArgs` của bench phải bỏ qua `--` trần, và `pnpm test -- <file>` không lọc file (xem §6).
+- **WXT 0.21 dùng shim `browser` native** (`globalThis.browser ?? globalThis.chrome`), không phải webextension-polyfill → hợp đồng `sendResponse` + `return true` là đúng. Import `browser` từ `#imports`; bare `chrome.*` không có type và ESLint đã cấm nó trong `src/lib/**` và `src/locales/**`.
 
  
 
@@ -197,6 +227,8 @@
 
  
 
+- Prompt mở đầu cho milestone kế tiếp: `docs/prompts/m1-brainstorming.md` (dán vào phiên mới cùng `/superpowers:brainstorming`).
+- Bản ghi M0 (đọc trước khi bắt đầu M1): `docs/superpowers/specs/2026-09-21-m0-connection-spike-design.md` (design + 12 quyết định), `docs/superpowers/plans/2026-09-21-m0-connection-spike.md` (plan 14 task, mẫu để viết plan M1), `bench/results/m0-20260921.csv` (số đo), spec §8.2 (bảng kết quả + hệ quả chọn model).
 - Chỉ đọc khi cần: `docs/spec/snagon-dich-ai-spec.md` (dài \~660 dòng — đọc đúng § đang cần bằng grep heading, đừng nạp cả file mỗi phiên), `LEDGER.md`, `bench/results/`.
 - Rule theo đường dẫn: `.claude/rules/content-script.md` (`paths: ["src/entrypoints/content*", "src/lib/segmenter/**", "src/lib/placeholder/**", "src/lib/validator/**"]`), `.claude/rules/provider.md` (`paths: ["src/lib/provider/**", "src/lib/prompt/**", "src/entrypoints/background*"]`).
 - Khi compact context, luôn giữ: đường dẫn plan đang chạy + task hiện tại, file đã sửa, lệnh test đang dùng, giả định/quyết định đã chốt trong phiên, mã lỗi `E_*` đang debug.
