@@ -46,7 +46,7 @@ export function isAbortError(value: unknown): boolean {
 }
 
 /** `detail` is bounded so a huge HTML error page cannot bloat a log line or a stored job. */
-const DETAIL_MAX_LENGTH = 500;
+export const DETAIL_MAX_LENGTH = 500;
 
 /** Spec §7.5: HTTP status → error code. `body` is the response text; its first 500 chars become `detail`. */
 export function mapHttpError(status: number, body: string): SnagonError {

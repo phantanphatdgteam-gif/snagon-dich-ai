@@ -1,4 +1,10 @@
-import { SnagonError, isAbortError, mapFetchError, mapHttpError } from '../errors.ts';
+import {
+  DETAIL_MAX_LENGTH,
+  SnagonError,
+  isAbortError,
+  mapFetchError,
+  mapHttpError,
+} from '../errors.ts';
 import { KEEP_ALIVE, NUM_CTX, buildChatRequest } from '../prompt/index.ts';
 import { parseTranslations } from '../prompt/instruct-json.ts';
 import { pickProfile } from '../prompt/profile.ts';
@@ -20,10 +26,21 @@ export interface Timeouts {
   ttftMs: number;
   idleMs: number;
   totalMs: number;
+  /** /api/version, /api/tags, /api/show, /api/ps: local and small, so a slow one is already a fault. */
+  metadataMs: number;
 }
 
-/** Spec §7.3: cold load + prompt eval may take up to 60 s; a stalled stream is dead after 20 s; nothing runs past 150 s. */
-export const DEFAULT_TIMEOUTS: Timeouts = { ttftMs: 60_000, idleMs: 20_000, totalMs: 150_000 };
+/**
+ * Spec §7.3: cold load + prompt eval may take up to 60 s; a stalled stream is dead after 20 s;
+ * nothing runs past 150 s. The metadata budget is separate: those calls answer from memory, and a
+ * server that accepts the connection but never replies must not leave the popup checking forever.
+ */
+export const DEFAULT_TIMEOUTS: Timeouts = {
+  ttftMs: 60_000,
+  idleMs: 20_000,
+  totalMs: 150_000,
+  metadataMs: 10_000,
+};
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -86,19 +103,74 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
     return response;
   }
 
-  async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-    const response = await request(path, { method: 'GET', signal });
-    return (await response.json()) as T;
+  /**
+   * Runs `attempt` under its own deadline, linked to the caller's signal so both can cancel the
+   * same fetch. Only the deadline becomes E_TIMEOUT: a caller abort keeps rejecting with AbortError.
+   */
+  async function withDeadline<T>(
+    path: string,
+    ms: number,
+    caller: AbortSignal | undefined,
+    attempt: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    const controller = new AbortController();
+    const abortFromCaller = (): void => controller.abort();
+    if (caller?.aborted) controller.abort();
+    else caller?.addEventListener('abort', abortFromCaller, { once: true });
+
+    let expired = false;
+    const timer = setTimeout(() => {
+      expired = true;
+      controller.abort();
+    }, ms);
+
+    try {
+      return await attempt(controller.signal);
+    } catch (error) {
+      if (expired) throw new SnagonError('E_TIMEOUT', `${path} did not answer in ${ms} ms`, path);
+      throw error;
+    } finally {
+      clearTimeout(timer);
+      caller?.removeEventListener('abort', abortFromCaller);
+    }
   }
 
-  async function postJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
-    const response = await request(path, {
-      method: 'POST',
-      headers: JSON_HEADERS,
-      body: JSON.stringify(body),
-      signal,
+  /** A 200 whose body is not JSON (a proxy error page, a truncated body) is still an E_* failure. */
+  async function parseJson<T>(response: Response, path: string): Promise<T> {
+    const text = await response.text();
+    try {
+      return JSON.parse(text) as T;
+    } catch {
+      throw new SnagonError(
+        'E_OUTPUT',
+        `${path} did not return JSON`,
+        text.slice(0, DETAIL_MAX_LENGTH),
+      );
+    }
+  }
+
+  async function getJson<T>(path: string, ms: number, signal?: AbortSignal): Promise<T> {
+    return withDeadline(path, ms, signal, async (linked) => {
+      const response = await request(path, { method: 'GET', signal: linked });
+      return parseJson<T>(response, path);
     });
-    return (await response.json()) as T;
+  }
+
+  async function postJson<T>(
+    path: string,
+    body: unknown,
+    ms: number,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    return withDeadline(path, ms, signal, async (linked) => {
+      const response = await request(path, {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+        signal: linked,
+      });
+      return parseJson<T>(response, path);
+    });
   }
 
   async function* translateStream(
@@ -215,12 +287,12 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
 
   return {
     async version(): Promise<string> {
-      const data = await getJson<{ version: string }>('/api/version');
+      const data = await getJson<{ version: string }>('/api/version', timeouts.metadataMs);
       return data.version;
     },
 
     async listModels(): Promise<ModelInfo[]> {
-      const data = await getJson<{ models?: RawTag[] }>('/api/tags');
+      const data = await getJson<{ models?: RawTag[] }>('/api/tags', timeouts.metadataMs);
       return (data.models ?? []).map((model) => ({
         name: model.name,
         size: model.size,
@@ -230,7 +302,7 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
     },
 
     async describe(model: string): Promise<ModelDetails> {
-      const data = await postJson<RawShow>('/api/show', { model });
+      const data = await postJson<RawShow>('/api/show', { model }, timeouts.metadataMs);
       const info = data.model_info ?? {};
       const architecture = info['general.architecture'];
       const contextLength =
@@ -245,7 +317,7 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
     },
 
     async loaded(): Promise<LoadedModel[]> {
-      const data = await getJson<{ models?: RawPs[] }>('/api/ps');
+      const data = await getJson<{ models?: RawPs[] }>('/api/ps', timeouts.metadataMs);
       return (data.models ?? []).map((model) => ({
         name: model.name,
         sizeVram: model.size_vram,
@@ -257,9 +329,12 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
       // No `messages` → Ollama only loads the model and keeps it resident (spec §7.1).
       // num_ctx is a load option: without it the model loads at its default context and the
       // first translate request (num_ctx 8192) makes Ollama unload and reload it.
+      // Loading a 19 GB model is slow by nature, so this keeps the cold-load budget of a first
+      // token (spec §7.3), not the metadata one.
       await postJson(
         '/api/chat',
         { model, keep_alive: KEEP_ALIVE, stream: false, options: { num_ctx: NUM_CTX } },
+        timeouts.ttftMs,
         signal,
       );
     },
