@@ -1,6 +1,6 @@
 import { browser } from '#imports';
 import type { ErrorCode } from '../../lib/errors.ts';
-import { SOURCE_LANGS, isSourceLang } from '../../lib/lang/codes.ts';
+import { SOURCE_LANGS, isSourceLang, type SourceLang } from '../../lib/lang/codes.ts';
 import { createLog } from '../../lib/log.ts';
 import {
   PORT_NAME,
@@ -93,6 +93,13 @@ function showError(code: ErrorCode, message: string): void {
   showCors(code === 'E_CORS');
 }
 
+/** A failure with no E_* code of its own: the extension messaging itself did not go through. */
+function showNotice(text: string): void {
+  ui.error.hidden = false;
+  ui.error.textContent = text;
+  showCors(false);
+}
+
 function clearError(): void {
   ui.error.hidden = true;
   ui.error.textContent = '';
@@ -103,7 +110,17 @@ async function checkConnection(): Promise<void> {
   ui.status.textContent = vi.popup.checking;
   clearError();
   const request: StatusGet = { type: 'status.get' };
-  const reply: unknown = await browser.runtime.sendMessage(request);
+  let reply: unknown;
+  try {
+    // sendMessage rejects outright when no listener answers: the service worker is asleep, was
+    // killed, or the extension was reloaded. Unhandled, that leaves "Đang kiểm tra…" on screen.
+    reply = await browser.runtime.sendMessage(request);
+  } catch (error) {
+    ui.status.textContent = vi.ollama.error;
+    showNotice(vi.popup.disconnected);
+    log.warn('status.get did not reach the service worker', error);
+    return;
+  }
   if (!isPopupReply(reply) || reply.type !== 'status') {
     ui.status.textContent = vi.ollama.error;
     log.warn('unexpected status reply', reply);
@@ -136,8 +153,14 @@ function renderStatus(status: StatusMsg): void {
 }
 
 async function restoreModel(previous: string): Promise<void> {
-  const stored = await browser.storage.local.get(MODEL_KEY);
-  const remembered = stored[MODEL_KEY];
+  let remembered: unknown;
+  try {
+    const stored = await browser.storage.local.get(MODEL_KEY);
+    remembered = stored[MODEL_KEY];
+  } catch (error) {
+    // Losing the remembered model costs nothing on screen; the select still works.
+    log.warn('cannot read the remembered model', error);
+  }
   const wanted = previous || (typeof remembered === 'string' ? remembered : '');
   const names = [...ui.model.options].map((option) => option.value);
   if (wanted && names.includes(wanted)) ui.model.value = wanted;
@@ -146,9 +169,17 @@ async function restoreModel(previous: string): Promise<void> {
 
 async function describeModel(model: string): Promise<void> {
   ui.modelInfo.textContent = vi.popup.describing;
-  await browser.storage.local.set({ [MODEL_KEY]: model });
   const request: ModelDescribe = { type: 'model.describe', model };
-  const reply: unknown = await browser.runtime.sendMessage(request);
+  let reply: unknown;
+  try {
+    await browser.storage.local.set({ [MODEL_KEY]: model });
+    reply = await browser.runtime.sendMessage(request);
+  } catch (error) {
+    ui.modelInfo.textContent = vi.ollama.error;
+    showNotice(vi.popup.disconnected);
+    log.warn('model.describe did not reach the service worker', error);
+    return;
+  }
   if (!isPopupReply(reply) || reply.type !== 'model.described') {
     ui.modelInfo.textContent = vi.ollama.error;
     log.warn('unexpected describe reply', reply);
@@ -179,6 +210,14 @@ function finishTest(): void {
   ui.cancel.disabled = true;
 }
 
+/** The job never started: clear the half-started UI, drop the port and let the user try again. */
+function failTest(): void {
+  ui.output.textContent = '';
+  ui.stats.textContent = '';
+  showNotice(vi.popup.disconnected);
+  finishTest();
+}
+
 function cancelTest(): void {
   if (activePort && activeJobId) {
     const cancel: JobCancel = { type: 'job.cancel', jobId: activeJobId };
@@ -206,7 +245,17 @@ function startTest(): void {
   ui.cancel.disabled = false;
 
   const jobId = crypto.randomUUID();
-  const port = browser.runtime.connect({ name: PORT_NAME });
+  let connected: Port | undefined;
+  try {
+    connected = browser.runtime.connect({ name: PORT_NAME });
+  } catch (error) {
+    log.warn('cannot open a port to the service worker', error);
+  }
+  if (!connected) {
+    failTest();
+    return;
+  }
+  const port = connected;
   activePort = port;
   activeJobId = jobId;
 
@@ -244,36 +293,51 @@ function startTest(): void {
       // Chrome killed the service worker mid-request: no seg.done/seg.error will ever arrive.
       ui.output.textContent = '';
       ui.stats.textContent = '';
-      ui.error.hidden = false;
-      ui.error.textContent = vi.popup.disconnected;
+      showNotice(vi.popup.disconnected);
     }
     finishTest();
   });
 
   void (async () => {
-    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-    const start: JobStart = {
-      type: 'job.start',
-      jobId,
-      tabId: tab?.id ?? -1,
-      frameId: 0,
-      src,
-      tgt: 'vi',
-      model,
-      profile: pickProfile(model), // derived at send time: model.describe may not have replied yet
-      url: TEST_URL,
-      title: TEST_TITLE,
-    };
-    const batch: BatchTranslate = {
-      type: 'batch.translate',
-      jobId,
-      batchId: 'b1',
-      priority: 0,
-      segments: [{ id: 's1', text, tokensEst: tokensEst(text, src) }],
-    };
-    port.postMessage(start);
-    port.postMessage(batch);
+    try {
+      await sendJob(port, jobId, { model, src, text });
+    } catch (error) {
+      if (activePort !== port) return; // already cancelled, or another test took over
+      log.warn('cannot send the test job', error);
+      failTest();
+    }
   })();
+}
+
+/** tabs.query and postMessage both throw once the extension context is gone, so they share a catch. */
+async function sendJob(
+  port: Port,
+  jobId: string,
+  job: { model: string; src: SourceLang; text: string },
+): Promise<void> {
+  const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+  const start: JobStart = {
+    type: 'job.start',
+    jobId,
+    tabId: tab?.id ?? -1,
+    frameId: 0,
+    src: job.src,
+    tgt: 'vi',
+    model: job.model,
+    // derived at send time: model.describe may not have replied yet
+    profile: pickProfile(job.model),
+    url: TEST_URL,
+    title: TEST_TITLE,
+  };
+  const batch: BatchTranslate = {
+    type: 'batch.translate',
+    jobId,
+    batchId: 'b1',
+    priority: 0,
+    segments: [{ id: 's1', text: job.text, tokensEst: tokensEst(job.text, job.src) }],
+  };
+  port.postMessage(start);
+  port.postMessage(batch);
 }
 
 async function copyCommand(): Promise<void> {
