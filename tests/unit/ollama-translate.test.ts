@@ -259,6 +259,24 @@ describe('translate — failures', () => {
     expect(calls[0]?.init?.signal?.aborted).toBe(true);
   });
 
+  it('ends silently when the caller aborts after the stream closed without a done line', async () => {
+    // The stream closes right after the two lines (no `done: true`), so the read that follows
+    // the abort returns done instead of rejecting — the race the post-loop guard covers.
+    const body = lines([{ message: { content: 'Xin' } }, { message: { content: ' chào' } }]);
+    const { fetch, calls } = fakeFetch({ pieces: [body] });
+    const provider = createOllamaProvider({ baseUrl: 'http://127.0.0.1:11434', fetch });
+    const controller = new AbortController();
+
+    const chunks: Chunk[] = [];
+    for await (const chunk of provider.translate(batchA(), controller.signal)) {
+      chunks.push(chunk);
+      if (chunks.length === 2) controller.abort();
+    }
+
+    expect(chunks.map((chunk) => chunk.kind)).toEqual(['progress', 'progress']);
+    expect(calls[0]?.init?.signal?.aborted).toBe(true);
+  });
+
   it('returns nothing when the signal is already aborted', async () => {
     const { fetch, calls } = fakeFetch({ pieces: [] });
     const provider = createOllamaProvider({ baseUrl: 'http://127.0.0.1:11434', fetch });

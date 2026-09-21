@@ -188,6 +188,9 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
       signal.removeEventListener('abort', abortFromCaller);
     }
 
+    // The caller may cancel while this generator sits at a yield and the stream has already
+    // ended on its own; cancellation is silent even then (no E_* code, no more chunks).
+    if (signal.aborted) return;
     if (!stats) throw new SnagonError('E_OUTPUT', 'stream ended without a done line');
 
     // Output cut by num_predict is never a finished segment (spec §7.3); the caller maps it to E_TRUNC.
