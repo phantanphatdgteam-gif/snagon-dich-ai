@@ -1,0 +1,4 @@
+ts,probe,model,result,detail
+2026-09-21T13:21:55.565Z,P1_format_stream,gemma4:26b,ok,progress_chunks=119 segments=s1+s2+s3 done_reason=stop
+2026-09-21T13:21:59.817Z,P2_abort_stops,translategemma:12b,ok,ttft_baseline_ms=218 ttft_after_abort_ms=260
+2026-09-21T13:22:01.498Z,P3_think_false,translategemma:12b,ok,done_reason=stop

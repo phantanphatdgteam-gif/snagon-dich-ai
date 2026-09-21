@@ -294,7 +294,9 @@ Rules:
 - User message là JSON: `{"source_lang":"ru","context":{"title":"…","domain":"…"},"segments":[{"id":"s12","text":"…"}]}`. Context chỉ gồm title trang và domain để chọn nghĩa thuật ngữ, không đưa toàn bài.
 - `format` = JSON schema: object có `translations` (array of `{id: string, text: string}`, cả hai `required`, `additionalProperties: false`). Constrained decoding của Ollama ép cấu trúc; validator vẫn kiểm ids khớp 1–1 và không rỗng. Việc `format` chạy cùng `stream: true` xác nhận ở M0 (§7.3).
 - Không glossary theo quyết định của anh; chỗ chèn giữ lại trong `PromptBuilder` (một mảng dòng rỗng) để sau này thêm mà không đổi template.
-- Options: `temperature` 0,3 (Gemma 4 khuyến nghị 1,0 / `top_p` 0,95 / `top_k` 64 cho mục đích chung — cố ý đi thấp hơn để ổn định, bake-off đo cả hai); `top_p` 0,95; `top_k` 64; `seed` 42; `num_predict` = min(4.096; 3 × tokensEst(in) + 128); `num_ctx` 8.192; `keep_alive` `"10m"`; `think: false`.
+- Options: `temperature` 0,3 (Gemma 4 khuyến nghị 1,0 / `top_p` 0,95 / `top_k` 64 cho mục đích chung — cố ý đi thấp hơn để ổn định, bake-off đo cả hai); `top_p` 0,95; `top_k` 64; `seed` 42; `num_predict` = min(**2.048**; 3 × tokensEst(in) + 128); `num_ctx` 8.192; `keep_alive` `"10m"`; `think: false`.
+
+> **Sửa M0 (2026-09-21):** trần ở đây ban đầu ghi 4.096, mâu thuẫn với trần chung 2.048 mà §7.3 đặt ra để không request nào chạm giới hạn 5 phút của service worker. §7.3 thắng — code dùng 2.048 cho cả hai profile.
 - Replace mode thay chữ khi `done` nên profile B không cần typewriter; incremental JSON parse chỉ còn cần cho popover dịch vùng chọn (M2).
 
 ### 6.3 A hay B?
@@ -320,7 +322,7 @@ Extension dùng đúng năm endpoint của Ollama, tất cả từ service worke
 | --- | --- | --- |
 | `GET /api/version` | Ollama sống; version đủ mới cho `think`, `format` schema và engine MLX (máy anh: 0.34.2) | Mở popup, trước mỗi job |
 | `GET /api/tags` | Danh sách model đã tải để chọn | Mở Options, nút refresh |
-| `POST /api/show` | `capabilities` (`completion`, `thinking`, `vision`…), `model_info.<arch>.context_length`, `template` → tự chọn profile (có `template` dạng TranslateGemma → A, còn lại → B) và hiển thị trần context của model | Khi chọn model; cache 24 h |
+| `POST /api/show` | `capabilities` (`completion`, `thinking`, `vision`…), `model_info.<arch>.context_length`, hiển thị trần context của model. **Chọn profile theo TÊN model** (`translategemma*` → A, còn lại → B), không theo `template` | Khi chọn model; cache 24 h (cache là M2) |
 | `GET /api/ps` | Model đang nạp, VRAM, `until` → trạng thái warm/cold | Popup |
 | `POST /api/chat` | Warm-up (`{"model": m, "keep_alive": "10m", "options": {"num_ctx": 8192}}` không `messages` — thiếu `options.num_ctx` thì Ollama nạp model ở context mặc định rồi unload/reload ngay ở request dịch đầu tiên; đo 2026-09-21 trên server log: `19:34:36 n_ctx = 131072` (warm-up) → `19:34:37 n_ctx = 8192` (request dịch)) và dịch (stream) | Warm-up lúc job bắt đầu, song song với segmenter; dịch mỗi batch |
 
@@ -380,7 +382,10 @@ Profile A khác ở chỗ: không `system`, một user message theo template §6
 
 - Stream là `application/x-ndjson`, mỗi dòng một JSON `{message:{content}, done}`. Dòng cuối `done: true` mang `eval_count`, `eval_duration` (→ tok/s hiện ở popup và log bake-off), `prompt_eval_count` (→ hiệu chỉnh EMA tỉ lệ chars/token theo ngôn ngữ), `done_reason`. `done_reason = "length"` nghĩa là bị cắt bởi `num_predict` → coi là fail, retry một lần với `num_predict` × 2.
 - `think: false` gửi được cho mọi model ở profile B: theo `server/routes.go`, Ollama chỉ trả 400 `does not support thinking` khi `think` **bật** (true/low/medium/high/max) trên model không có capability; `false` được chấp nhận im lặng. Với model có thinking mà không gửi `think`, mặc định là **bật** — nên phải luôn gửi `false`.
-- `format` JSON schema đi cùng `stream: true` không được tài liệu nói rõ (mọi ví dụ dùng `stream: false`) → xác nhận ở M0; nếu không chạy cùng nhau, profile B dùng `stream: false` cho từng batch nhỏ (batch đầu ≤ 3 segment nên độ trễ cảm nhận vẫn thấp). Tài liệu structured outputs khuyên kèm schema dạng chữ trong prompt và hạ temperature — đã áp dụng ở §6.2.
+- **`format` JSON schema ĐI ĐƯỢC cùng `stream: true` — xác nhận ở M0 (2026-09-21).** Probe P1 trên `gemma4:26b`, batch 3 segment: nhận 119 chunk có nội dung trước dòng `done`, ghép lại parse đúng schema, đủ cả ba id, `done_reason: stop`. Phương án dự phòng `stream: false` cho profile B **không cần dùng**; profile B giữ `stream: true`.
+- **Abort phía client DỪNG sinh token — xác nhận ở M0.** Probe P2 trên `translategemma:12b`: TTFT baseline 218 ms, gửi request dài rồi abort sau 5 chunk, request ngắn ngay sau đó có TTFT 260 ms. Chênh 42 ms nghĩa là server rảnh ngay; nếu abort không dừng sinh, với `OLLAMA_NUM_PARALLEL=1` request sau đã phải xếp hàng nhiều giây. *Lưu ý phương pháp:* lần đo đầu cho baseline 1.677 ms và suýt cho kết luận "ok" nhờ may — nguyên nhân là `warmUp` khi đó nạp model ở `num_ctx` mặc định rồi bị request dịch ép nạp lại (xem §7.1). Chỉ sau khi sửa warm-up thì baseline mới sạch.
+- **`think: false` được chấp nhận trên model không có capability `thinking` — xác nhận ở M0.** Probe P3 trên `translategemma:12b` (`capabilities: [completion, vision]`): HTTP 200, `done_reason: stop`.
+- *(nguyên văn giả định ban đầu, giữ để đối chiếu)* `format` JSON schema đi cùng `stream: true` không được tài liệu nói rõ (mọi ví dụ dùng `stream: false`) → xác nhận ở M0; nếu không chạy cùng nhau, profile B dùng `stream: false` cho từng batch nhỏ. Tài liệu structured outputs khuyên kèm schema dạng chữ trong prompt và hạ temperature — đã áp dụng ở §6.2.
 - Ngân sách token đầu ra mỗi request = 100 s × `v_decode` đo được, trần 2.048 → không request nào chạm giới hạn 5 phút của service worker kể cả với model 27B ở 13 tok/s.
 - Timeout: TTFT 60 s (cold load 19 GB + prompt eval), idle giữa hai chunk 20 s, tổng 150 s; hủy bằng `AbortController`. Abort phía client làm Ollama dừng sinh token: đã xác nhận trong mã nguồn (`llm/server.go` truyền request context, runner đóng sequence với `DoneReasonConnectionClosed`); vẫn smoke-test ở M0 trên 0.34.2.
 - `num_ctx` giữ nguyên 8.192 ở mọi request của cùng model: `server/sched.go` (`needsReload`) so sánh option nạp của request mới với runner đang chạy và nạp lại nếu khác — mất vài giây mỗi lần, và hai client dùng `num_ctx` khác nhau sẽ làm model nạp đi nạp lại.
@@ -436,6 +441,26 @@ Tổng dung lượng tải \~79 GB kể cả bản MLX để so sánh. Trạng t
 
 \*Ước lượng theo số học băng thông bộ nhớ lớp M4 Pro (\~270 GB/s) với quant Q4; M5 Pro kỳ vọng bằng hoặc hơn. **Phải đo lại ở M0** bằng `ollama run <model> --verbose` (đọc `eval rate`), và đo cả bản `-mlx` vì Ollama có runtime MLX riêng cho Apple Silicon (cần Ollama bản mới; kiểm `/api/version`).
 
+#### Số đo M0 — 2026-09-21, MacBook Pro M5 Pro, Ollama 0.34.2, `num_ctx` 8192
+
+Đo bằng `bench/measure.ts`, tức chính module provider và prompt của extension, nên đây là request thật. Mỗi model × 5 ngôn ngữ × 3 lần, tổng 45 request; median lấy trên các lần thành công. CSV gốc: `bench/results/m0-20260921.csv`.
+
+| Model | Profile | Warm-up ms | TTFT ms (median) | tok/s (median) | tag_ok % | n | failed |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `gemma4:26b` | instruct-json | 4 | 68 | **83,6** | **100** | 15 | 0 |
+| `translategemma:12b` | translategemma | 2 | 89 | 33,2 | **40** | 15 | 0 |
+| `translategemma:27b` | translategemma | 5.287 | 250 | 14,8 | 100 | 15 | 0 |
+
+`qwen3.5:27b` và `gemma4:26b-mlx` chưa pull nên tự skip — vẫn là việc mở của M3.
+
+**Tốc độ: `gemma4:26b` vượt xa ước lượng.** 83,6 tok/s so với khoảng ước 45–70 — nhanh hơn `translategemma:12b` 2,5 lần dù tham số lớn gấp đôi, đúng như kỳ vọng MoE 3,8B active/token. Hai model TranslateGemma rơi đúng khoảng ước (33,2 vs 25–35; 14,8 vs 11–16), nên sai lệch nằm ở Gemma 4 chứ không phải ở phương pháp ước lượng.
+
+**Tag integrity: `translategemma:12b` trượt tiêu chí A5.** `tag_ok` 40% = 6/15, và phân bố không ngẫu nhiên: EN và RU đạt 6/6, còn **zh-Hans, zh-Hant và th trượt cả 9/9**. Model không làm hỏng tag mà **xoá sạch**: input có `<1> </1> <2/>`, output không còn tag nào, phần chữ vẫn dịch bình thường. `translategemma:27b` cùng profile, cùng template đạt 100%, nên đây là giới hạn của bản 12B chứ không phải lỗi template profile A. Ngưỡng §6.1 là 5%; 60% là vượt gấp mười hai lần.
+
+**Lỗi số trong tiếng Trung.** Mẫu zh-Hans chứa `48亿元` (4,8 tỷ nhân dân tệ); `translategemma:12b` trả về "48 tỷ đồng" — sai độ lớn mười lần và sai luôn đơn vị tiền. Đúng loại lỗi §5.6 xếp nguy hiểm nhất khi đọc tài liệu tài chính. `gemma4:26b` dịch đúng.
+
+**Hệ quả cho mặc định v1** (chốt lại §8.1, chờ M3 xác nhận trên golden set 120 đoạn): `gemma4:26b` + profile B là mặc định cho **mọi cặp ngôn ngữ**, vì thắng đồng thời ở tốc độ, tag integrity và độ chính xác số. `translategemma:12b` **không dùng cho zh/th** ở chế độ có placeholder; giữ cho EN/RU chỉ như phương án thay thế. `translategemma:27b` vẫn là chế độ chất lượng cao chọn tay, nhưng 14,8 tok/s nghĩa là bài 1.000 từ mất khoảng 135 s — chỉ hợp đoạn ngắn chọn tay, không dịch cả trang.
+
 Về yêu cầu “model được đào tạo bằng tiếng Việt”: cả ba họ Gemma 4, TranslateGemma, Qwen3.5 đều có tiếng Việt trong dữ liệu huấn luyện. Các model fine-tune riêng cho tiếng Việt (Vistral, VinaLLaMA, PhoGPT) không được khuyến nghị: chúng tối ưu sinh tiếng Việt khi chat trên nền 7B đời 2024, yếu ở khâu hiểu tiếng Nga/Trung — với dịch, hiểu nguồn quan trọng ngang viết đích. `sailor2:20b` là ngoại lệ duy nhất đáng thử vì có tiếng Trung và tiếng Việt cùng lúc, nhưng đã một năm tuổi và không có tiếng Nga trong 15 ngôn ngữ.
 
 ### 8.3 Ngân sách thời gian
@@ -452,6 +477,22 @@ T_{page} \approx T_{load} + n_{req}\, t_{overhead} + \frac{N_{out}}{v_{decode}},
 | Viewport đầy (5 đoạn) | 500 | \~9 s | \~17 s | \~40 s |
 | Bài 1.000 từ | 2.000 | \~36 s | \~67 s | \~155 s |
 | Cold load từ SSD | — | 19 GB ≈ 6–10 s | 8 GB ≈ 3–5 s | 17 GB ≈ 6–10 s |
+
+**Đo lại ở M0 (2026-09-21).** Bảng trên giữ nguyên làm mốc ước lượng; số thật như sau.
+
+| Đại lượng | Ước lượng | Đo thật | Ghi chú |
+| --- | --- | --- | --- |
+| TTFT warm, 1 đoạn | — | `gemma4:26b` 68 ms · `translategemma:12b` 89 ms · `translategemma:27b` 250 ms | Thấp hơn mục tiêu "< 3 s" từ 12 đến 44 lần |
+| TTFT lần đầu sau khi nạp model | — | 175–1.650 ms tuỳ model và ngôn ngữ | Tăng theo độ dài prompt; tiếng Thái cao nhất |
+| Cold load thật, `translategemma:12b` 8 GB | 3–5 s | **15,2 s** | Đo qua popup, lần nạp đầu tiên của máy; gấp 3 lần ước lượng |
+| Warm-up khi model đã resident | — | 2–5 ms | Chỉ là xác nhận, không nạp lại |
+| Warm-up khi phải nạp, `translategemma:27b` 17 GB | 6–10 s | 5.287 ms | Trong khoảng ước lượng |
+
+Ba điều chỉnh rút ra:
+
+1. **Mục tiêu "< 3 s cho đoạn đầu" đã đạt rất thoải mái khi model warm** — nút thắt không nằm ở TTFT mà ở `v_decode`. Với `gemma4:26b` ở 83,6 tok/s, bài 1.000 từ (`N_out` ≈ 2.000) mất khoảng **24 s** thay vì 36 s như ước lượng.
+2. **Cold load là rủi ro thật cho A6.** 15,2 s cho model 8 GB vượt ngưỡng "< 12 s khi cold" của §2. Model 19 GB có thể còn lâu hơn, và §7.4 cho biết Chrome giết service worker khi một `fetch` quá 30 s chưa có response — M0 chưa có resume nên biểu hiện là im lặng. Warm-up ở đầu job (§7.1) chính là để tránh việc này; nó chỉ hiệu quả khi gửi đúng `options.num_ctx` (xem §7.1).
+3. **Viewport-first vẫn bắt buộc** — kết luận không đổi, chỉ là biên an toàn rộng hơn ước lượng.
 
 Kết luận: mục tiêu “bản dịch đầu tiên < 3 s” đạt với `gemma4:26b`, sát ngưỡng với `translategemma:12b`, không đạt với 27B — nên 27B chỉ là chế độ chọn tay. Viewport-first vẫn bắt buộc ngay cả trên máy này vì cả bài mất 36–67 s.
 
