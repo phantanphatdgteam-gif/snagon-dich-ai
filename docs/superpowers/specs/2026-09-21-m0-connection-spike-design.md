@@ -113,10 +113,12 @@ interface TranslateProvider {
   listModels(): Promise<ModelInfo[]>;                           // GET /api/tags
   describe(model: string): Promise<ModelDetails>;               // POST /api/show
   loaded(): Promise<LoadedModel[]>;                             // GET /api/ps
-  warmUp(model: string, signal?: AbortSignal): Promise<void>;   // POST /api/chat {model, keep_alive:"10m"} không messages
+  warmUp(model: string, signal?: AbortSignal): Promise<void>;   // POST /api/chat {model, keep_alive:"10m", options:{num_ctx:8192}} không messages
   translate(batch: TranslateBatch, signal: AbortSignal): AsyncIterable<Chunk>;
 }
 ```
+
+Hợp đồng `warmUp`: body không `messages` nhưng **phải** có `options.num_ctx: 8192` (cùng `NUM_CTX` với mọi request dịch) — thiếu nó thì Ollama nạp model ở context mặc định rồi unload/reload ngay ở request dịch đầu tiên (đo 2026-09-21 trên server log: `19:34:36 n_ctx = 131072` → `19:34:37 n_ctx = 8192`).
 
 `createOllamaProvider({ baseUrl, fetch = globalThis.fetch })` — `fetch` inject được để unit test bằng stub. Hợp đồng `translate`:
 
@@ -234,7 +236,7 @@ Kết quả ghi `bench/results/m0-probe-<yyyymmdd>.csv`: `ts, probe, model, resu
   - `prompt`: template A **byte-exact** với chuỗi §6.1 (kể cả hai dòng trống) cho 5 mã nguồn; B có `system` §6.2, user là JSON đúng shape, `format` đúng schema, `think: false`; `num_ctx` luôn 8192; `keep_alive` `"10m"`; `num_predict` đúng công thức và trần 2.048; A từ chối batch > 1 segment.
   - `profile`: `translategemma:12b` → A, `translategemma` → A, `gemma4:26b` → B, `qwen3.5:27b` → B.
   - `errors`: bảng status → mã; `TypeError` → `E_DOWN`; `AbortError` giữ nguyên.
-  - `ollama` (stub `fetch` trả `Response` với `ReadableStream` NDJSON): A yield `progress` → `segment` → `done` kèm stats đúng; B parse JSON → `segment` theo id, thiếu id → không yield, JSON hỏng → `E_OUTPUT`; `done_reason: length` → không `segment`; abort giữa stream → kết thúc sạch, không lỗi; fake timer: TTFT 60 s / idle 20 s → `E_TIMEOUT`; 403/404/503/500 → đúng mã; `warmUp` gửi body không `messages`.
+  - `ollama` (stub `fetch` trả `Response` với `ReadableStream` NDJSON): A yield `progress` → `segment` → `done` kèm stats đúng; B parse JSON → `segment` theo id, thiếu id → không yield, JSON hỏng → `E_OUTPUT`; `done_reason: length` → không `segment`; abort giữa stream → kết thúc sạch, không lỗi; fake timer: TTFT 60 s / idle 20 s → `E_TIMEOUT`; 403/404/503/500 → đúng mã; `warmUp` gửi body không `messages` nhưng có `options.num_ctx: 8192`.
   - `messages`: guard nhận đúng, từ chối thiếu trường/sai kiểu.
   - `tokens`: tỉ lệ 4 ngôn ngữ, làm tròn lên.
 - Popup không test tự động ở M0 (verify tay mục 5.4). E2E, mock Ollama: M2.

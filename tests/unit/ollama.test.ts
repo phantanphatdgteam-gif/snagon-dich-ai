@@ -121,16 +121,19 @@ describe('createOllamaProvider — status endpoints', () => {
     ]);
   });
 
-  it('warmUp() POSTs /api/chat without messages, keep_alive 10m, stream false', async () => {
+  it('warmUp() POSTs /api/chat without messages, keep_alive 10m, stream false, num_ctx 8192', async () => {
     const fetchFn = vi.fn<FetchLike>(async () => jsonResponse({ done: true, done_reason: 'load' }));
     const signal = new AbortController().signal;
     await providerWith(fetchFn).warmUp('gemma4:26b', signal);
     const [url, init] = fetchFn.mock.calls[0] ?? [];
     expect(url).toBe('http://127.0.0.1:11434/api/chat');
+    // Without options.num_ctx Ollama loads the model at its default context and reloads it on
+    // the first translate request (spec §7.1, measured 2026-09-21).
     expect(JSON.parse(String(init?.body))).toEqual({
       model: 'gemma4:26b',
       keep_alive: '10m',
       stream: false,
+      options: { num_ctx: 8192 },
     });
     expect(init?.signal).toBe(signal);
   });

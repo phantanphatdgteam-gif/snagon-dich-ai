@@ -322,7 +322,7 @@ Extension dùng đúng năm endpoint của Ollama, tất cả từ service worke
 | `GET /api/tags` | Danh sách model đã tải để chọn | Mở Options, nút refresh |
 | `POST /api/show` | `capabilities` (`completion`, `thinking`, `vision`…), `model_info.<arch>.context_length`, `template` → tự chọn profile (có `template` dạng TranslateGemma → A, còn lại → B) và hiển thị trần context của model | Khi chọn model; cache 24 h |
 | `GET /api/ps` | Model đang nạp, VRAM, `until` → trạng thái warm/cold | Popup |
-| `POST /api/chat` | Warm-up (`{"model": m, "keep_alive": "10m"}` không `messages`) và dịch (stream) | Warm-up lúc job bắt đầu, song song với segmenter; dịch mỗi batch |
+| `POST /api/chat` | Warm-up (`{"model": m, "keep_alive": "10m", "options": {"num_ctx": 8192}}` không `messages` — thiếu `options.num_ctx` thì Ollama nạp model ở context mặc định rồi unload/reload ngay ở request dịch đầu tiên; đo 2026-09-21 trên server log: `19:34:36 n_ctx = 131072` (warm-up) → `19:34:37 n_ctx = 8192` (request dịch)) và dịch (stream) | Warm-up lúc job bắt đầu, song song với segmenter; dịch mỗi batch |
 
 ### 7.2 CORS & biến môi trường
 

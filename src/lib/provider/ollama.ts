@@ -1,5 +1,5 @@
 import { SnagonError, isAbortError, mapFetchError, mapHttpError } from '../errors.ts';
-import { KEEP_ALIVE, buildChatRequest } from '../prompt/index.ts';
+import { KEEP_ALIVE, NUM_CTX, buildChatRequest } from '../prompt/index.ts';
 import { parseTranslations } from '../prompt/instruct-json.ts';
 import { pickProfile } from '../prompt/profile.ts';
 import { parseNdjson } from './ndjson.ts';
@@ -252,7 +252,13 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
 
     async warmUp(model: string, signal?: AbortSignal): Promise<void> {
       // No `messages` → Ollama only loads the model and keeps it resident (spec §7.1).
-      await postJson('/api/chat', { model, keep_alive: KEEP_ALIVE, stream: false }, signal);
+      // num_ctx is a load option: without it the model loads at its default context and the
+      // first translate request (num_ctx 8192) makes Ollama unload and reload it.
+      await postJson(
+        '/api/chat',
+        { model, keep_alive: KEEP_ALIVE, stream: false, options: { num_ctx: NUM_CTX } },
+        signal,
+      );
     },
 
     translate(batch: TranslateBatch, signal: AbortSignal): AsyncIterable<Chunk> {
