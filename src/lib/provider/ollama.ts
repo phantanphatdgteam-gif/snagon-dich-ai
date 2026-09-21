@@ -194,14 +194,17 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
     if (!stats) throw new SnagonError('E_OUTPUT', 'stream ended without a done line');
 
     // Output cut by num_predict is never a finished segment (spec §7.3); the caller maps it to E_TRUNC.
+    // Neither is empty or whitespace-only text (CLAUDE.md §3: "rỗng/rác" is E_OUTPUT): the segment is
+    // simply not yielded, and the caller reports the missing id as E_OUTPUT — fail-closed.
     if (stats.doneReason !== 'length') {
       if (batch.profile === 'translategemma') {
         const segment = batch.segments[0];
-        if (segment) yield { kind: 'segment', id: segment.id, text: content.trim() };
+        const text = content.trim();
+        if (segment && text !== '') yield { kind: 'segment', id: segment.id, text };
       } else {
         const wanted = new Set(batch.segments.map((segment) => segment.id));
         for (const translation of parseTranslations(content)) {
-          if (wanted.has(translation.id)) {
+          if (wanted.has(translation.id) && translation.text.trim() !== '') {
             yield { kind: 'segment', id: translation.id, text: translation.text };
           }
         }

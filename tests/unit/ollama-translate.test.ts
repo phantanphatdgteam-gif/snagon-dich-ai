@@ -176,6 +176,20 @@ describe('translate — profile A', () => {
     expect(chunks.map((chunk) => chunk.kind)).toEqual(['progress', 'done']);
     expect(chunks[1]).toMatchObject({ kind: 'done', stats: { doneReason: 'length' } });
   });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', ' \n\t'],
+  ])('yields no segment when the model output is %s (fail-closed)', async (_label, content) => {
+    const body = lines([{ message: { content } }, { message: { content: '' }, ...DONE }]);
+    const { fetch } = fakeFetch({ pieces: [body] });
+    const provider = createOllamaProvider({ baseUrl: 'http://127.0.0.1:11434', fetch });
+
+    const chunks = await collect(provider.translate(batchA(), new AbortController().signal));
+
+    expect(chunks.map((chunk) => chunk.kind)).not.toContain('segment');
+    expect(chunks.at(-1)).toMatchObject({ kind: 'done', stats: { doneReason: 'stop' } });
+  });
 });
 
 describe('translate — profile B', () => {
@@ -202,6 +216,28 @@ describe('translate — profile B', () => {
     ]);
     expect(chunks[4]?.kind).toBe('done');
     expect(chunks).toHaveLength(5);
+  });
+
+  it.each([
+    ['empty', ''],
+    ['whitespace-only', ' \n\t'],
+  ])('yields no segment for an id whose text is %s (fail-closed)', async (_label, text) => {
+    const json = JSON.stringify({
+      translations: [
+        { id: 's1', text },
+        { id: 's2', text: 'Tạm biệt' },
+      ],
+    });
+    const body = lines([{ message: { content: json } }, { message: { content: '' }, ...DONE }]);
+    const { fetch } = fakeFetch({ pieces: [body] });
+    const provider = createOllamaProvider({ baseUrl: 'http://127.0.0.1:11434', fetch });
+
+    const chunks = await collect(provider.translate(batchB(), new AbortController().signal));
+
+    expect(chunks.filter((chunk) => chunk.kind === 'segment')).toEqual([
+      { kind: 'segment', id: 's2', text: 'Tạm biệt' },
+    ]);
+    expect(chunks.at(-1)?.kind).toBe('done');
   });
 
   it('rejects with E_OUTPUT when the JSON is malformed', async () => {

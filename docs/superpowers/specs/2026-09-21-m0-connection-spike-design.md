@@ -125,7 +125,7 @@ Hợp đồng `warmUp`: body không `messages` nhưng **phải** có `options.nu
 - Gửi body từ `buildChatRequest(batch)`; đọc `application/x-ndjson` qua `ndjson.ts` (chịu chunk cắt giữa dòng, dòng dở ở cuối, CRLF, dòng rỗng).
 - Timeout: TTFT 60 s, idle giữa hai chunk 20 s, tổng 150 s → `SnagonError('E_TIMEOUT')`; `AbortController` nội bộ nối với `signal` của caller; caller abort → generator kết thúc im lặng (không phải lỗi).
 - Dòng `done: true` → `GenStats` (`eval_duration` ns → ms).
-- **Không bao giờ yield `segment` cho output bị cắt** (`done_reason === "length"`). Profile B: ghép content, `JSON.parse`, yield `segment` cho từng id có mặt; JSON hỏng → `SnagonError('E_OUTPUT')`. Ai thiếu segment là việc của SW (mục 5.3).
+- **Không bao giờ yield `segment` cho output bị cắt** (`done_reason === "length"`) **hay text rỗng/toàn khoảng trắng** (fail-closed). Profile B: ghép content, `JSON.parse`, yield `segment` cho từng id có mặt và có text; JSON hỏng → `SnagonError('E_OUTPUT')`. Ai thiếu segment là việc của SW (mục 5.3).
 - Lỗi HTTP/mạng → `mapHttpError` / `mapFetchError` (mục 4.4). Không retry ở tầng này (M2).
 
 ### 4.2 `prompt/`
