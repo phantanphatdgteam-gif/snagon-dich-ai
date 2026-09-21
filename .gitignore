@@ -24,3 +24,6 @@ coverage/
 
 # rune plugin metrics (local only)
 .rune/
+
+# superpowers SDD workspace (ledger, briefs, review packages)
+.superpowers/

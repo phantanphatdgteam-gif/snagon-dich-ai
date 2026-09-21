@@ -24,7 +24,7 @@
 - Relative imports inside the repo carry the `.ts` extension. Types are imported with `import type`. No enums, namespaces, parameter properties, or `const enum` (`erasableSyntaxOnly`).
 - pnpm only. First install creates the lockfile; afterwards `pnpm install --frozen-lockfile`. Never edit `pnpm-lock.yaml` by hand.
 - Never run `ollama pull`, `launchctl`, or touch `~/.ollama`; print the command for Phát instead. Never run the live bench (`SNAGON_LIVE=1`) without Phát's explicit go-ahead in the conversation.
-- Commits: Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`), small, one per task or per TDD step group. Every commit message ends with the trailer line `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+- Commits: Conventional Commits (`feat:`, `test:`, `chore:`, `docs:`), small, one per task or per TDD step group. Every commit message ends with the `Co-Authored-By:` trailer your own harness reminder specifies (it names your model — do not copy another agent's). The commit commands in the steps below show the trailer's position; substitute your own line.
 - Gate for every task: `pnpm typecheck && pnpm lint && pnpm test` green (single file: `pnpm test -- tests/unit/<name>.test.ts`). Tasks that touch entrypoints also need `pnpm build`.
 
 ## File Structure
@@ -294,7 +294,7 @@ If `#imports` cannot be resolved by `tsc`, confirm `.wxt/tsconfig.json` exists (
 git add package.json pnpm-lock.yaml .nvmrc .prettierrc .prettierignore wxt.config.ts tsconfig.json vitest.config.ts eslint.config.js src/entrypoints
 git commit -m "chore: scaffold WXT project with TypeScript, Vitest and ESLint gates
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -447,7 +447,7 @@ Expected: all exit 0.
 git add wxt.config.ts scripts/extension-id.mjs scripts/check-manifest.mjs
 git commit -m "feat: pin extension id with manifest key and freeze spec §4 manifest
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -603,7 +603,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add src/lib/lang/codes.ts src/lib/tokens.ts tests/unit/lang.test.ts tests/unit/tokens.test.ts
 git commit -m "feat: add source language codes and token estimates
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -797,7 +797,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add src/lib/errors.ts tests/unit/errors.test.ts
 git commit -m "feat: add E_* error codes and HTTP/fetch error mapping
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -947,7 +947,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add src/lib/provider/ndjson.ts tests/unit/ndjson.test.ts
 git commit -m "feat: add NDJSON stream parser
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -1448,7 +1448,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add src/lib/prompt tests/unit/prompt.test.ts
 git commit -m "feat: add prompt profiles A/B and /api/chat request builder
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -1850,7 +1850,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add src/lib/provider/types.ts src/lib/provider/ollama.ts tests/unit/ollama.test.ts
 git commit -m "feat: add TranslateProvider interface and Ollama status endpoints
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -2313,7 +2313,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add src/lib/provider/ollama.ts tests/unit/ollama-translate.test.ts
 git commit -m "feat: stream /api/chat translations with timeouts and abort
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -2854,7 +2854,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add src/lib/messages.ts src/lib/log.ts src/lib/samples.ts src/locales/vi.ts tests/unit/messages.test.ts tests/unit/samples.test.ts
 git commit -m "feat: add job/popup message types, logger, sample texts and vi strings
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -3135,7 +3135,7 @@ Expected: all green; `manifest OK · extension id = …`. If `tsc` cannot type `
 git add src/entrypoints/background.ts
 git commit -m "feat: service worker handles popup status/describe and the snagon-job port
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -3594,7 +3594,7 @@ Optional smoke test when a display is available (a subagent without one skips it
 git add src/entrypoints/popup
 git commit -m "feat: popup checks the connection, lists models and runs a translate test
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -3875,7 +3875,7 @@ export interface SummaryRow {
   n: number;
 }
 
-/** Medians over `single` rows per model+profile; warm-up time from the `warmup` row. */
+/** Medians over successful `single` rows per model+profile (error rows have no ttft); warm-up time from the `warmup` row. */
 export function summarize(rows: readonly CsvRow[]): SummaryRow[] {
   const groups = new Map<string, CsvRow[]>();
   for (const row of rows) {
@@ -3886,7 +3886,7 @@ export function summarize(rows: readonly CsvRow[]): SummaryRow[] {
   }
   return [...groups.entries()].map(([key, list]) => {
     const [model = '', profile = ''] = key.split('|');
-    const singles = list.filter((row) => row.kind === 'single');
+    const singles = list.filter((row) => row.kind === 'single' && row.ttft_ms !== '');
     const warmup = list.find((row) => row.kind === 'warmup');
     const okCount = singles.filter((row) => row.tag_ok === true || row.tag_ok === 'true').length;
     return {
@@ -4188,7 +4188,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add bench/lib.ts bench/measure.ts bench/results/.gitkeep tests/unit/bench-lib.test.ts
 git commit -m "feat: add bench script measuring TTFT/tok-s and probing format-stream, abort, think:false
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -4279,7 +4279,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test && pnpm build && pnpm check:manif
 git add .github/workflows/ci.yml README.md
 git commit -m "chore: add CI workflow and README
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 ---
@@ -4329,7 +4329,7 @@ Run: `pnpm typecheck && pnpm lint && pnpm test`
 git add bench/results/m0-*.csv docs/spec/snagon-dich-ai-spec.md LEDGER.md
 git commit -m "docs: record M0 measurements and probe results in the spec
 
-Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+<Co-Authored-By trailer from your harness reminder>"
 ```
 
 - [ ] **Step 6: Open the PR and stop**

@@ -155,6 +155,8 @@
  
 
 - Chỉ qua `subagent-driven-development` / `dispatching-parallel-agents`. Không dùng subagent để kiểm tra lại việc của chính mình; review hai giai đoạn (spec compliance → code quality) là của skill, không tự thêm vòng nữa.
+- Model cho subagent: tối thiểu **Opus 5** với effort max, không dùng model thấp hơn (Sonnet/Haiku) cho bất kỳ vai nào — implementer, reviewer, re-reviewer; task cần suy luận sâu/phức tạp (thiết kế, debug khó, review cuối toàn branch) dùng **Fable 5.1**. Quy tắc này thắng mục "Model Selection" của skill.
+- Được sinh nhiều agent chạy song song khi bối cảnh cho phép và các task không đụng cùng file/branch (không xung đột commit); mọi task ghi vào cùng một worktree thì chạy tuần tự.
 
  
 
