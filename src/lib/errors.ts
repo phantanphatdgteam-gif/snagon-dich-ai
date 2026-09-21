@@ -45,9 +45,12 @@ export function isAbortError(value: unknown): boolean {
   );
 }
 
+/** `detail` is bounded so a huge HTML error page cannot bloat a log line or a stored job. */
+const DETAIL_MAX_LENGTH = 500;
+
 /** Spec §7.5: HTTP status → error code. `body` is the response text; its first 500 chars become `detail`. */
 export function mapHttpError(status: number, body: string): SnagonError {
-  const detail = body.slice(0, 500);
+  const detail = body.slice(0, DETAIL_MAX_LENGTH);
   if (status === 403) {
     return new SnagonError('E_CORS', 'Ollama rejected the extension origin (HTTP 403)', detail);
   }
@@ -67,7 +70,11 @@ export function mapFetchError(error: unknown): Error {
   if (error instanceof SnagonError) return error;
   if (isAbortError(error)) return error as Error;
   if (error instanceof TypeError) {
-    return new SnagonError('E_DOWN', 'cannot reach Ollama (connection refused)', error.message);
+    return new SnagonError(
+      'E_DOWN',
+      'cannot reach Ollama (connection refused)',
+      error.message.slice(0, DETAIL_MAX_LENGTH),
+    );
   }
   return error instanceof Error ? error : new Error(String(error));
 }
