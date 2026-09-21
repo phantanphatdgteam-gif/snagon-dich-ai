@@ -1,0 +1,83 @@
+body {
+  margin: 0;
+  min-width: 380px;
+  max-width: 420px;
+  font:
+    13px/1.4 system-ui,
+    sans-serif;
+  color: #1a1a1a;
+  background: #fff;
+}
+#app {
+  padding: 12px;
+  display: grid;
+  gap: 12px;
+}
+h1 {
+  font-size: 15px;
+  margin: 0;
+}
+.row {
+  display: grid;
+  gap: 6px;
+}
+.status {
+  font-weight: 600;
+}
+.muted {
+  color: #666;
+  font-size: 12px;
+}
+.actions {
+  display: flex;
+  gap: 8px;
+}
+button {
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  background: #f6f6f6;
+  cursor: pointer;
+}
+button.primary {
+  background: #1a73e8;
+  border-color: #1a73e8;
+  color: #fff;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+select,
+textarea {
+  font: inherit;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+}
+.output,
+.cmd {
+  white-space: pre-wrap;
+  word-break: break-word;
+  margin: 0;
+  padding: 8px;
+  border-radius: 6px;
+  background: #f3f3f3;
+  min-height: 2.5em;
+  font: inherit;
+}
+.cmd {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  user-select: all;
+}
+.error {
+  color: #b00020;
+}
+.cors {
+  display: grid;
+  gap: 6px;
+}

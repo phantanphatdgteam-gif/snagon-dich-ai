@@ -74,7 +74,7 @@
 - Dev (mở Chrome với extension, hot reload): `pnpm dev`
 - Build: `pnpm build` → `.output/chrome-mv3/`; đóng gói: `pnpm zip`
 - Typecheck + lint: `pnpm typecheck && pnpm lint`
-- Test một file (ưu tiên hơn cả suite): `pnpm test -- tests/unit/placeholder.test.ts`
+- Test một file (ưu tiên hơn cả suite): `pnpm exec vitest run tests/unit/placeholder.test.ts` — KHÔNG dùng `pnpm test -- <file>`: pnpm chuyển thành `vitest run -- <file>` và Vitest bỏ qua filter, chạy cả suite (kiểm 2026-09-21).
 - Test unit + integration: `pnpm test`
 - E2E (tự build rồi chạy với mock Ollama): `pnpm test:e2e`
 - Chạy mock Ollama riêng: `pnpm mock-ollama`
@@ -155,6 +155,8 @@
  
 
 - Chỉ qua `subagent-driven-development` / `dispatching-parallel-agents`. Không dùng subagent để kiểm tra lại việc của chính mình; review hai giai đoạn (spec compliance → code quality) là của skill, không tự thêm vòng nữa.
+- Model cho subagent: tối thiểu **Opus 5** với effort max, không dùng model thấp hơn (Sonnet/Haiku) cho bất kỳ vai nào — implementer, reviewer, re-reviewer; task cần suy luận sâu/phức tạp (thiết kế, debug khó, review cuối toàn branch) dùng **Fable 5.1**. Quy tắc này thắng mục "Model Selection" của skill.
+- Được sinh nhiều agent chạy song song khi bối cảnh cho phép và các task không đụng cùng file/branch (không xung đột commit); mọi task ghi vào cùng một worktree thì chạy tuần tự.
 
  
 
@@ -172,6 +174,7 @@
 
  
 
+- **`launchctl setenv OLLAMA_ORIGINS` KHÔNG hoạt động trên macOS 26** (đo 2026-09-21): app mở qua Launch Services không kế thừa biến của launchd, server vẫn dùng danh sách origin mặc định. Dùng `pkill -x Ollama; sleep 2; open -a Ollama --env 'OLLAMA_ORIGINS=chrome-extension://<id>'` — chỉ in lệnh cho Phát, không tự chạy. Kiểm bằng `curl -s -o /dev/null -w '%{http_code}\n' -H "Origin: chrome-extension://<id>" 127.0.0.1:11434/api/version` (phải 200) và `grep -o 'OLLAMA_ORIGINS:\[[^]]*\]' ~/.ollama/logs/server.log | tail -1`.
 - Ollama trả 403 khi request mang `Origin: chrome-extension://<id>` chưa có trong `OLLAMA_ORIGINS`; `host_permissions` của Chrome không sửa được việc này. Extension ID phải cố định bằng `key` — thiếu key thì ID đổi sau mỗi lần load unpacked và `OLLAMA_ORIGINS` vô hiệu.
 - Content script không fetch được Ollama (origin trang + CSP `connect-src`) — mọi fetch ở SW.
 - SW bị kill sau 30 s idle, 5 phút/request, hoặc fetch > 30 s chưa có response → `stream: true`, `job.ping` qua Port mỗi 20 s khi có job, state ở content script, resume theo `(jobId, segId)`. Không dùng alarm để giữ SW sống khi không có job.

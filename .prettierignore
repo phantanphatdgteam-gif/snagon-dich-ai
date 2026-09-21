@@ -1,0 +1,12 @@
+node_modules
+.output
+.wxt
+.worktrees
+pnpm-lock.yaml
+bench/results
+
+# Hand-written Vietnamese prose: Prettier's reflow hurts readability and
+# creates noisy diffs. README.md stays formatted.
+CLAUDE.md
+LEDGER.md
+docs/
