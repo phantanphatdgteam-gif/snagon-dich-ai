@@ -30,6 +30,22 @@ interface Outcome {
   tagOk: boolean;
   charsIn: number;
   charsOut: number;
+  /** Segment ids the provider never yielded — nothing was translated for them (§5.6). */
+  missing: string[];
+}
+
+/** '' when every segment came back; otherwise the code the run is recorded under. */
+function failureCode(outcome: Outcome): 'E_TRUNC' | 'E_OUTPUT' | '' {
+  if (outcome.missing.length === 0) return '';
+  return outcome.stats.doneReason === 'length' ? 'E_TRUNC' : 'E_OUTPUT';
+}
+
+function joinReason(errorCode: string, stats: GenStats | undefined): string {
+  return stats ? `${errorCode}/${stats.doneReason}` : errorCode;
+}
+
+function describeFailure(outcome: Outcome, code: string): string {
+  return `${code} — no translation for ${outcome.missing.join('+')} · ttft ${Math.round(outcome.stats.ttftMs)} ms · done_reason ${outcome.stats.doneReason}`;
 }
 
 function describeError(error: unknown): string {
@@ -65,21 +81,26 @@ async function translateOnce(
   signal: AbortSignal = new AbortController().signal,
 ): Promise<Outcome> {
   const texts = new Map<string, string>();
-  let lastProgress = '';
   let stats: GenStats | undefined;
   for await (const chunk of provider.translate(batch, signal)) {
-    if (chunk.kind === 'progress') lastProgress = chunk.text ?? lastProgress;
-    else if (chunk.kind === 'segment') texts.set(chunk.id, chunk.text);
-    else stats = chunk.stats;
+    if (chunk.kind === 'segment') texts.set(chunk.id, chunk.text);
+    else if (chunk.kind === 'done') stats = chunk.stats;
   }
   if (!stats) throw new Error('translate ended without stats (aborted?)');
-  const outputs = batch.segments.map(
-    (segment) => texts.get(segment.id) ?? (batch.segments.length === 1 ? lastProgress : ''),
-  );
+  // The provider is fail-closed: output cut by num_predict, or empty, yields no segment at all.
+  // Substituting the accumulated partial text here would publish a half-translation as a
+  // finished measurement — and compute tag_ok on text the model never finished.
+  const missing = batch.segments
+    .filter((segment) => !texts.has(segment.id))
+    .map((segment) => segment.id);
+  const outputs = batch.segments.map((segment) => texts.get(segment.id) ?? '');
   return {
     stats,
     outputs,
-    tagOk: batch.segments.every((segment, index) => tagOk(segment.text, outputs[index] ?? '')),
+    missing,
+    tagOk:
+      missing.length === 0 &&
+      batch.segments.every((segment, index) => tagOk(segment.text, outputs[index] ?? '')),
     charsIn: batch.segments.reduce((sum, segment) => sum + segment.text.length, 0),
     charsOut: outputs.reduce((sum, text) => sum + text.length, 0),
   };
@@ -96,8 +117,10 @@ function row(
   },
   outcome: Outcome | undefined,
   errorCode = '',
+  /** Stats of a run that reached the model but produced no usable translation: a failure, measured. */
+  failedStats?: GenStats,
 ): CsvRow {
-  const stats = outcome?.stats;
+  const stats = outcome?.stats ?? failedStats;
   return {
     ts: new Date().toISOString(),
     model: base.model,
@@ -111,7 +134,8 @@ function row(
     eval_count: stats?.evalCount ?? '',
     eval_duration_ms: stats?.evalDurationMs ?? '',
     tok_s: stats ? tokPerSec(stats.evalCount, stats.evalDurationMs) : '',
-    done_reason: stats?.doneReason ?? errorCode,
+    // A failure keeps its code in this column; with stats it also keeps what Ollama reported.
+    done_reason: errorCode === '' ? (stats?.doneReason ?? '') : joinReason(errorCode, stats),
     chars_in: outcome?.charsIn ?? '',
     chars_out: outcome?.charsOut ?? '',
     tag_ok: outcome?.tagOk ?? '',
@@ -168,6 +192,12 @@ async function measure(
             provider,
             makeBatch(model, profile, lang, [sample.paragraph]),
           );
+          const failure = failureCode(outcome);
+          if (failure !== '') {
+            record(row(base, undefined, failure, outcome.stats));
+            console.log(`  ${lang} run ${run}: ${describeFailure(outcome, failure)}`);
+            continue;
+          }
           record(row(base, outcome));
           recordText({ ...base, input: sample.paragraph, output: outcome.outputs[0] });
           const tokS = tokPerSec(outcome.stats.evalCount, outcome.stats.evalDurationMs).toFixed(1);
@@ -187,11 +217,17 @@ async function measure(
             provider,
             makeBatch(model, profile, lang, sample.sentences),
           );
-          record(row(base, outcome));
-          recordText({ ...base, input: sample.sentences, output: outcome.outputs });
-          console.log(
-            `  ${lang} batch3: ttft ${Math.round(outcome.stats.ttftMs)} ms · ${outcome.stats.doneReason} · tag_ok ${outcome.tagOk}`,
-          );
+          const failure = failureCode(outcome);
+          if (failure !== '') {
+            record(row(base, undefined, failure, outcome.stats));
+            console.log(`  ${lang} batch3: ${describeFailure(outcome, failure)}`);
+          } else {
+            record(row(base, outcome));
+            recordText({ ...base, input: sample.sentences, output: outcome.outputs });
+            console.log(
+              `  ${lang} batch3: ttft ${Math.round(outcome.stats.ttftMs)} ms · ${outcome.stats.doneReason} · tag_ok ${outcome.tagOk}`,
+            );
+          }
         } catch (error) {
           record(row(base, undefined, isSnagonError(error) ? error.code : 'ERROR'));
           console.log(`  ${lang} batch3: ${describeError(error)}`);

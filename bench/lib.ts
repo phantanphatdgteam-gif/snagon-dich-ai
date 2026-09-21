@@ -122,9 +122,15 @@ export interface SummaryRow {
   tokS: number;
   tagOkPct: number;
   n: number;
+  /** `single` runs that produced no usable translation: truncated, empty, or a provider error. */
+  failed: number;
 }
 
-/** Medians over successful `single` rows per model+profile (error rows have no ttft); warm-up time from the `warmup` row. */
+/**
+ * Medians over successful `single` rows per model+profile; warm-up time from the `warmup` row.
+ * A failed run is written with an empty `tag_ok` — nothing was translated, so nothing was checked —
+ * and is excluded here: its TTFT and tok/s describe a truncation, not a translation (§8.2).
+ */
 export function summarize(rows: readonly CsvRow[]): SummaryRow[] {
   const groups = new Map<string, CsvRow[]>();
   for (const row of rows) {
@@ -135,7 +141,8 @@ export function summarize(rows: readonly CsvRow[]): SummaryRow[] {
   }
   return [...groups.entries()].map(([key, list]) => {
     const [model = '', profile = ''] = key.split('|');
-    const singles = list.filter((row) => row.kind === 'single' && row.ttft_ms !== '');
+    const attempts = list.filter((row) => row.kind === 'single');
+    const singles = attempts.filter((row) => row.ttft_ms !== '' && row.tag_ok !== '');
     const warmup = list.find((row) => row.kind === 'warmup');
     const okCount = singles.filter((row) => row.tag_ok === true || row.tag_ok === 'true').length;
     return {
@@ -146,6 +153,7 @@ export function summarize(rows: readonly CsvRow[]): SummaryRow[] {
       tokS: median(singles.map((row) => Number(row.tok_s))),
       tagOkPct: singles.length > 0 ? (100 * okCount) / singles.length : Number.NaN,
       n: singles.length,
+      failed: attempts.length - singles.length,
     };
   });
 }
@@ -154,12 +162,12 @@ export function markdownTable(rows: readonly SummaryRow[]): string {
   const format = (value: number, digits = 0): string =>
     Number.isFinite(value) ? value.toFixed(digits) : '—';
   const lines = [
-    '| Model | Profile | Warm-up ms | TTFT ms (median) | tok/s (median) | tag_ok % | n |',
-    '| --- | --- | --- | --- | --- | --- | --- |',
+    '| Model | Profile | Warm-up ms | TTFT ms (median) | tok/s (median) | tag_ok % | n | failed |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- |',
   ];
   for (const row of rows) {
     lines.push(
-      `| ${row.model} | ${row.profile} | ${format(row.warmupMs)} | ${format(row.ttftMs)} | ${format(row.tokS, 1)} | ${format(row.tagOkPct)} | ${row.n} |`,
+      `| ${row.model} | ${row.profile} | ${format(row.warmupMs)} | ${format(row.ttftMs)} | ${format(row.tokS, 1)} | ${format(row.tagOkPct)} | ${row.n} | ${row.failed} |`,
     );
   }
   return lines.join('\n');

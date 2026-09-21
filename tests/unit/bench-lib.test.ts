@@ -134,13 +134,38 @@ describe('summary', () => {
         tokS: 55,
         tagOkPct: 50,
         n: 2,
+        failed: 0,
       },
     ]);
   });
 
-  it('renders a markdown table', () => {
+  // A run whose segment never came back carries real stats but no tag_ok: it is a failure, and
+  // folding its TTFT/tok-s into the medians would publish a truncation as a measurement.
+  it('keeps failed single runs out of the medians and counts them', () => {
+    const rows: CsvRow[] = [
+      base,
+      { ...base, run: 2, ttft_ms: 9000, tok_s: 5, done_reason: 'E_TRUNC/length', tag_ok: '' },
+      { ...base, run: 3, ttft_ms: '', tok_s: '', done_reason: 'E_DOWN', tag_ok: '' },
+    ];
+    expect(summarize(rows)).toEqual([
+      {
+        model: 'gemma4:26b',
+        profile: 'instruct-json',
+        warmupMs: Number.NaN,
+        ttftMs: 100,
+        tokS: 60,
+        tagOkPct: 100,
+        n: 1,
+        failed: 2,
+      },
+    ]);
+  });
+
+  it('renders a markdown table with the failure count', () => {
     const table = markdownTable(summarize([base]));
     expect(table.split('\n')).toHaveLength(3);
-    expect(table).toContain('| gemma4:26b | instruct-json | — | 100 | 60.0 | 100 | 1 |');
+    expect(table).toContain('| Model | Profile | Warm-up ms | TTFT ms (median) |');
+    expect(table).toContain('| tag_ok % | n | failed |');
+    expect(table).toContain('| gemma4:26b | instruct-json | — | 100 | 60.0 | 100 | 1 | 0 |');
   });
 });
