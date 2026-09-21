@@ -17,11 +17,15 @@ pnpm check:manifest   # in ra extension ID (cố định nhờ manifest.key)
 
 Load unpacked: `chrome://extensions` → Developer mode → Load unpacked → chọn `.output/chrome-mv3`. ID phải trùng với `pnpm check:manifest`.
 
-Ollama chỉ chấp nhận origin đã khai báo. Chạy một lần rồi Quit/mở lại app Ollama:
+Ollama chỉ chấp nhận origin đã khai báo. Chạy lệnh này để tắt rồi mở lại Ollama kèm origin:
 
 ```bash
-launchctl setenv OLLAMA_ORIGINS "chrome-extension://afdehlbopanflojemfiplepnfccgafge"
+pkill -x Ollama; sleep 2; open -a Ollama --env 'OLLAMA_ORIGINS=chrome-extension://afdehlbopanflojemfiplepnfccgafge'
 ```
+
+Kiểm tra bằng `curl -s -o /dev/null -w '%{http_code}\n' -H "Origin: chrome-extension://afdehlbopanflojemfiplepnfccgafge" 127.0.0.1:11434/api/version` — phải trả `200`.
+
+**Không dùng `launchctl setenv OLLAMA_ORIGINS …`** dù tài liệu Ollama khuyên vậy: trên macOS 26, app mở qua Finder/Dock không kế thừa biến của launchd, nên server vẫn khởi động với danh sách origin mặc định và trả 403. Đo 2026-09-21: `launchctl getenv` trả đúng giá trị, app đã restart sau khi đặt biến, nhưng log server vẫn ghi danh sách mặc định. Lệnh `open --env` chỉ có hiệu lực cho lần mở đó — mở Ollama từ Dock thì phải chạy lại.
 
 ID ở trên là ID hiện tại của repo. Nếu `key` trong `wxt.config.ts` đổi, chạy lại `pnpm build && pnpm check:manifest` để lấy ID mới rồi đặt lại `OLLAMA_ORIGINS`.
 

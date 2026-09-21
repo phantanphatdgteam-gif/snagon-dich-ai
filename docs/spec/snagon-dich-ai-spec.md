@@ -331,10 +331,12 @@ Ollama mặc định chỉ chấp nhận origin `127.0.0.1` và `0.0.0.0`; reque
 macOS (app Ollama, máy của anh):
 
 ```bash
-launchctl setenv OLLAMA_ORIGINS "chrome-extension://<EXTENSION_ID>"
-launchctl setenv OLLAMA_KEEP_ALIVE "30m"
-# Quit Ollama trên menu bar rồi mở lại
+pkill -x Ollama; sleep 2; open -a Ollama --env 'OLLAMA_ORIGINS=chrome-extension://<EXTENSION_ID>'
 ```
+
+**Sửa 2026-09-21 (đo ở M0):** cách `launchctl setenv` + Quit/mở lại mà mục này viết ban đầu **không hoạt động trên macOS 26**. Bằng chứng: `launchctl getenv OLLAMA_ORIGINS` trả đúng giá trị, app được khởi động lại lúc 19:20:28 *sau* khi đặt biến, nhưng `ps eww` của tiến trình server không có `OLLAMA_ORIGINS` và `~/.ollama/logs/server.log` ghi `OLLAMA_ORIGINS:[http://localhost … vscode-file://*]` — danh sách mặc định. App mở qua Launch Services (Finder/Dock/Spotlight) không kế thừa biến của launchd. `open --env` đặt biến ngay trên lần mở đó, đã xác nhận: curl kèm `Origin: chrome-extension://<ID>` trả 200 và log ghi `OLLAMA_ORIGINS:[chrome-extension://<ID> …]`.
+
+Hệ quả: biến chỉ sống theo lần mở — mở Ollama từ Dock là mất, phải chạy lại lệnh. Cài cố định (LaunchAgent riêng hoặc script bọc) là việc còn mở, đưa vào `LEDGER.md`. `OLLAMA_KEEP_ALIVE` cũng đặt cùng cách nếu cần.
 
 Linux systemd: `systemctl edit ollama.service` → `[Service]` `Environment="OLLAMA_ORIGINS=chrome-extension://<ID>"` → `daemon-reload`, `restart`. Windows: biến môi trường của user, quit rồi mở lại Ollama.
 

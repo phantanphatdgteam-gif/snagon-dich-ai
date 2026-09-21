@@ -174,6 +174,7 @@
 
  
 
+- **`launchctl setenv OLLAMA_ORIGINS` KHÔNG hoạt động trên macOS 26** (đo 2026-09-21): app mở qua Launch Services không kế thừa biến của launchd, server vẫn dùng danh sách origin mặc định. Dùng `pkill -x Ollama; sleep 2; open -a Ollama --env 'OLLAMA_ORIGINS=chrome-extension://<id>'` — chỉ in lệnh cho Phát, không tự chạy. Kiểm bằng `curl -s -o /dev/null -w '%{http_code}\n' -H "Origin: chrome-extension://<id>" 127.0.0.1:11434/api/version` (phải 200) và `grep -o 'OLLAMA_ORIGINS:\[[^]]*\]' ~/.ollama/logs/server.log | tail -1`.
 - Ollama trả 403 khi request mang `Origin: chrome-extension://<id>` chưa có trong `OLLAMA_ORIGINS`; `host_permissions` của Chrome không sửa được việc này. Extension ID phải cố định bằng `key` — thiếu key thì ID đổi sau mỗi lần load unpacked và `OLLAMA_ORIGINS` vô hiệu.
 - Content script không fetch được Ollama (origin trang + CSP `connect-src`) — mọi fetch ở SW.
 - SW bị kill sau 30 s idle, 5 phút/request, hoặc fetch > 30 s chưa có response → `stream: true`, `job.ping` qua Port mỗi 20 s khi có job, state ở content script, resume theo `(jobId, segId)`. Không dùng alarm để giữ SW sống khi không có job.

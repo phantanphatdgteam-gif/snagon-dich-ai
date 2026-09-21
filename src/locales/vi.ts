@@ -42,9 +42,13 @@ export const vi = {
     E_PERM: 'Extension chưa có quyền truy cập endpoint này.',
     E_OUTPUT: 'Output của model không hợp lệ.',
   } satisfies Record<ErrorCode, string>,
+  // macOS 26 does not pass launchd variables to apps opened through Launch Services, so the
+  // documented `launchctl setenv` + restart leaves the server on its default origin list
+  // (verified 2026-09-21 on Ollama 0.34.2). `open --env` sets the variable on the launch itself.
   corsCommand: (extensionId: string): string =>
-    `launchctl setenv OLLAMA_ORIGINS "chrome-extension://${extensionId}"`,
-  corsRestart: 'Sau đó Quit Ollama trên menu bar rồi mở lại.',
+    `pkill -x Ollama; sleep 2; open -a Ollama --env 'OLLAMA_ORIGINS=chrome-extension://${extensionId}'`,
+  corsRestart:
+    'Lệnh trên tự tắt rồi mở lại Ollama. Chỉ có hiệu lực cho lần mở đó — mở Ollama từ Dock thì phải chạy lại.',
   profileLabel: (profile: Profile): string =>
     profile === 'translategemma' ? 'Profile A (translategemma)' : 'Profile B (instruct-json)',
   statsLine: (ttftMs: number, tokPerSec: number, evalCount: number, doneReason: string): string =>

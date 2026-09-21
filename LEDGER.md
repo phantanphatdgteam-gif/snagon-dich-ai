@@ -4,6 +4,7 @@ Mỗi dòng: `- [ ] <việc> — nguồn (§spec / PR) — milestone dự kiến
 
 ## Gieo từ design M0 (2026-09-21)
 
+- [ ] Cài `OLLAMA_ORIGINS` cố định (LaunchAgent riêng hoặc script bọc) — hiện phải chạy `open -a Ollama --env ...` mỗi lần mở Ollama từ Dock; `launchctl setenv` vô hiệu trên macOS 26 (đo 2026-09-21) — M4
 - [ ] Sao lưu private key `~/.config/snagon-dich-ai/snagon-dich-ai.pem` (mode 600, ngoài repo) — mất file này thì extension ID đổi, `OLLAMA_ORIGINS` im lặng trả 403. ID hiện tại: `afdehlbopanflojemfiplepnfccgafge` — M0
 
 - [ ] Cache `/api/show` 24 h — §7.1 — M2
