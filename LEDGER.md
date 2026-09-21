@@ -4,6 +4,8 @@ Mỗi dòng: `- [ ] <việc> — nguồn (§spec / PR) — milestone dự kiến
 
 ## Gieo từ design M0 (2026-09-21)
 
+- [ ] Sao lưu private key `~/.config/snagon-dich-ai/snagon-dich-ai.pem` (mode 600, ngoài repo) — mất file này thì extension ID đổi, `OLLAMA_ORIGINS` im lặng trả 403. ID hiện tại: `afdehlbopanflojemfiplepnfccgafge` — M0
+
 - [ ] Cache `/api/show` 24 h — §7.1 — M2
 - [ ] Bảng retry/backoff §7.5; `E_TRUNC` retry với `num_predict × 2` — §7.5 — M2
 - [ ] `job.ping` 20 s qua Port; reconnect/resume theo `(jobId, segId)` — §7.4 — M2
