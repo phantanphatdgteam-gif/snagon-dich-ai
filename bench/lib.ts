@@ -127,7 +127,8 @@ export interface SummaryRow {
 }
 
 /**
- * Medians over successful `single` rows per model+profile; warm-up time from the `warmup` row.
+ * Medians over successful `single` rows per model+profile; warm-up time from a `warmup` row that
+ * actually loaded the model.
  * A failed run is written with an empty `tag_ok` — nothing was translated, so nothing was checked —
  * and is excluded here: its TTFT and tok/s describe a truncation, not a translation (§8.2).
  */
@@ -143,7 +144,8 @@ export function summarize(rows: readonly CsvRow[]): SummaryRow[] {
     const [model = '', profile = ''] = key.split('|');
     const attempts = list.filter((row) => row.kind === 'single');
     const singles = attempts.filter((row) => row.ttft_ms !== '' && row.tag_ok !== '');
-    const warmup = list.find((row) => row.kind === 'warmup');
+    // Only a warm-up that finished loading is a warm-up time; a failed one keeps its E_* code here.
+    const warmup = list.find((row) => row.kind === 'warmup' && row.done_reason === 'load');
     const okCount = singles.filter((row) => row.tag_ok === true || row.tag_ok === 'true').length;
     return {
       model,

@@ -120,7 +120,7 @@ describe('summary', () => {
 
   it('groups by model+profile with medians over single runs and the warm-up time', () => {
     const rows: CsvRow[] = [
-      { ...base, kind: 'warmup', total_ms: 4000 },
+      { ...base, kind: 'warmup', total_ms: 4000, done_reason: 'load', tag_ok: '' },
       base,
       { ...base, run: 2, ttft_ms: 300, tok_s: 50, tag_ok: false },
       { ...base, kind: 'batch3', ttft_ms: 999 },
@@ -159,6 +159,17 @@ describe('summary', () => {
         failed: 2,
       },
     ]);
+  });
+
+  // A warm-up that hit its deadline spent that time failing to load, not loading: reporting it as
+  // "Warm-up ms" would publish a timeout as a measurement.
+  it('does not report a failed warm-up as a warm-up time', () => {
+    const rows: CsvRow[] = [
+      { ...base, kind: 'warmup', total_ms: 60_000, done_reason: 'E_TIMEOUT', tag_ok: '' },
+      base,
+    ];
+    expect(summarize(rows)[0]?.warmupMs).toBeNaN();
+    expect(markdownTable(summarize(rows))).toContain('| gemma4:26b | instruct-json | — |');
   });
 
   it('renders a markdown table with the failure count', () => {

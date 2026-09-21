@@ -171,17 +171,30 @@ async function measure(
       continue;
     }
     const loadedBefore = (await provider.loaded()).some((loaded) => loaded.name === model);
+    // A warm-up can fail on its own deadline — a cold 19 GB load may outlast the TTFT budget.
+    // Record it under its E_* code and measure the model anyway: the first run is then cold,
+    // which is data. Aborting here would throw away every model after this one.
     const startedAt = performance.now();
-    await provider.warmUp(model);
+    let warmupCode = '';
+    let warmupDetail = '';
+    try {
+      await provider.warmUp(model);
+    } catch (error) {
+      warmupCode = isSnagonError(error) ? error.code : 'ERROR';
+      warmupDetail = describeError(error);
+    }
     const warmupMs = performance.now() - startedAt;
     const warmupRow = row(
       { model, profile, lang: '', kind: 'warmup', run: 0, loadedBefore },
       undefined,
     );
-    record({ ...warmupRow, total_ms: warmupMs, done_reason: 'load' });
+    record({ ...warmupRow, total_ms: warmupMs, done_reason: warmupCode || 'load' });
     console.log(
       `\n${model} (${profile}) warm-up ${Math.round(warmupMs)} ms · loaded before: ${loadedBefore}`,
     );
+    if (warmupCode !== '') {
+      console.log(`  warm-up failed: ${warmupDetail} — measuring anyway, the first run is cold`);
+    }
 
     for (const lang of SOURCE_LANGS) {
       const sample = SAMPLES[lang];
