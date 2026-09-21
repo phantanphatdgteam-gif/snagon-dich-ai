@@ -92,6 +92,8 @@ async function handlePopupRequest(request: PopupRequest): Promise<PopupReply> {
         error: info,
       };
     }
+    // Non-fatal (the popup only loses its "đang nạp" marker), but never silent.
+    if (loaded.status === 'rejected') log.warn('/api/ps failed', errorInfo(loaded.reason));
     return {
       type: 'status',
       ollama: 'ok',
