@@ -1,8 +1,11 @@
-import { SnagonError, mapFetchError, mapHttpError } from '../errors.ts';
-import { KEEP_ALIVE } from '../prompt/index.ts';
+import { SnagonError, isAbortError, mapFetchError, mapHttpError } from '../errors.ts';
+import { KEEP_ALIVE, buildChatRequest } from '../prompt/index.ts';
+import { parseTranslations } from '../prompt/instruct-json.ts';
 import { pickProfile } from '../prompt/profile.ts';
+import { parseNdjson } from './ndjson.ts';
 import type {
   Chunk,
+  GenStats,
   LoadedModel,
   ModelDetails,
   ModelInfo,
@@ -50,6 +53,18 @@ interface RawPs {
   expires_at: string;
 }
 
+interface RawChatLine {
+  message?: { role?: string; content?: string };
+  done?: boolean;
+  done_reason?: string;
+  prompt_eval_count?: number;
+  eval_count?: number;
+  eval_duration?: number;
+  error?: string;
+}
+
+type TimeoutKind = 'ttft' | 'idle' | 'total';
+
 const JSON_HEADERS = { 'content-type': 'application/json' };
 
 export function createOllamaProvider(options: OllamaProviderOptions): TranslateProvider {
@@ -90,10 +105,106 @@ export function createOllamaProvider(options: OllamaProviderOptions): TranslateP
     batch: TranslateBatch,
     signal: AbortSignal,
   ): AsyncGenerator<Chunk, void, undefined> {
-    void batch;
-    void signal;
-    void timeouts;
-    throw new SnagonError('E_OUTPUT', 'translate is implemented in Task 8');
+    if (signal.aborted) return;
+    const body = buildChatRequest(batch);
+
+    // One internal controller aborts the fetch for both reasons: caller cancel and timeouts.
+    const controller = new AbortController();
+    const abortFromCaller = () => controller.abort();
+    signal.addEventListener('abort', abortFromCaller, { once: true });
+
+    let timeoutKind: TimeoutKind | null = null;
+    let phaseTimer: ReturnType<typeof setTimeout> | undefined;
+    const arm = (ms: number, kind: TimeoutKind) => {
+      clearTimeout(phaseTimer);
+      phaseTimer = setTimeout(() => {
+        timeoutKind = kind;
+        controller.abort();
+      }, ms);
+    };
+    const totalTimer = setTimeout(() => {
+      timeoutKind = 'total';
+      controller.abort();
+    }, timeouts.totalMs);
+
+    const startedAt = performance.now();
+    let ttftMs = -1;
+    let content = '';
+    let tokens = 0;
+    let stats: GenStats | undefined;
+
+    try {
+      arm(timeouts.ttftMs, 'ttft');
+      const response = await request('/api/chat', {
+        method: 'POST',
+        headers: JSON_HEADERS,
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!response.body) throw new SnagonError('E_OUTPUT', 'empty response body');
+
+      for await (const raw of parseNdjson(response.body)) {
+        const line = raw as RawChatLine;
+        if (typeof line.error === 'string') {
+          throw new SnagonError('E_OUTPUT', 'ollama reported an error mid-stream', line.error);
+        }
+        if (ttftMs < 0) ttftMs = performance.now() - startedAt;
+        arm(timeouts.idleMs, 'idle');
+
+        const piece = line.message?.content ?? '';
+        if (piece) {
+          content += piece;
+          tokens += 1;
+          yield batch.profile === 'translategemma'
+            ? { kind: 'progress', tokens, text: content }
+            : { kind: 'progress', tokens };
+        }
+        if (line.done) {
+          stats = {
+            ttftMs,
+            totalMs: performance.now() - startedAt,
+            promptEvalCount: line.prompt_eval_count ?? 0,
+            evalCount: line.eval_count ?? 0,
+            evalDurationMs: (line.eval_duration ?? 0) / 1_000_000,
+            doneReason: line.done_reason ?? 'unknown',
+          };
+          break;
+        }
+      }
+    } catch (error) {
+      if (signal.aborted) return; // caller cancelled: not an error
+      if (timeoutKind !== null) {
+        throw new SnagonError(
+          'E_TIMEOUT',
+          `no response within the ${timeoutKind} timeout`,
+          timeoutKind,
+        );
+      }
+      if (isAbortError(error)) return; // consumer stopped iterating
+      throw mapFetchError(error);
+    } finally {
+      clearTimeout(phaseTimer);
+      clearTimeout(totalTimer);
+      signal.removeEventListener('abort', abortFromCaller);
+    }
+
+    if (!stats) throw new SnagonError('E_OUTPUT', 'stream ended without a done line');
+
+    // Output cut by num_predict is never a finished segment (spec §7.3); the caller maps it to E_TRUNC.
+    if (stats.doneReason !== 'length') {
+      if (batch.profile === 'translategemma') {
+        const segment = batch.segments[0];
+        if (segment) yield { kind: 'segment', id: segment.id, text: content.trim() };
+      } else {
+        const wanted = new Set(batch.segments.map((segment) => segment.id));
+        for (const translation of parseTranslations(content)) {
+          if (wanted.has(translation.id)) {
+            yield { kind: 'segment', id: translation.id, text: translation.text };
+          }
+        }
+      }
+    }
+    yield { kind: 'done', stats };
   }
 
   return {
