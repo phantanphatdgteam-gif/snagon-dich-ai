@@ -1,0 +1,38 @@
+{
+  "name": "snagon-dich-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome MV3 extension: dịch trang EN/RU/ZH/TH → VI bằng Ollama local",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "bench": "node bench/measure.ts",
+    "check:manifest": "node scripts/check-manifest.mjs"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "eslint": "^10.11.0",
+    "eslint-plugin-no-unsanitized": "^4.1.5",
+    "prettier": "^3.9.8",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.70.0",
+    "vitest": "^5.0.1",
+    "wxt": "^0.21.4"
+  }
+}
